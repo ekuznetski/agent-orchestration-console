@@ -151,6 +151,11 @@ export function DecisionPanel() {
   const recordAgent = useConsoleStore((state) => (recordId ? state.agents[recordId] : null))
   const waitingCount = useConsoleStore((state) => waitingQueue(state).length)
   const select = useViewStore((state) => state.select)
+  const showDecision = useViewStore((state) => state.showDecision)
+  const panelRef = useRef<HTMLElement>(null)
+  // The panel's own switch to an agent's decision. Focus outside the panel stays where it is; focus inside the
+  // panel content being replaced follows to the new decision (select raises focusRequest), so it never drops to body.
+  const focusInPanel = () => panelRef.current?.contains(document.activeElement) ?? false
   const pin = useViewStore((state) => state.pin)
   const setOutcome = useViewStore((state) => state.setOutcome)
   const agent = useConsoleStore((state) => (shownId ? state.agents[shownId] : null))
@@ -168,12 +173,12 @@ export function DecisionPanel() {
 
   // The one switch the panel makes by itself: the edited confirmation the user's own Save asked for, while the
   // panel still shows that Save's outcome. Moving away (a card click, Next decision) clears the outcome, so no
-  // switch then. Focus goes to the decision, not to Approve.
+  // switch then. Focus stays where the user left it: an event never moves focus.
   const outcomeAgent = useConsoleStore((state) => (outcome ? state.agents[outcome.agentId] : null))
   const reasked = outcome !== null && outcomeAgent !== null && editReady(outcome, outcomeAgent)
   useEffect(() => {
-    if (reasked && outcome) select(outcome.agentId)
-  }, [reasked, outcome, select])
+    if (reasked && outcome) (focusInPanel() ? select : showDecision)(outcome.agentId)
+  }, [reasked, outcome, select, showDecision])
 
   // The record's agent starts waiting for the user (its confirmation or question arrived while the user reads its
   // record): the panel opens that agent's decision, the same agent the user is looking at. Only on the change
@@ -183,8 +188,8 @@ export function DecisionPanel() {
   useEffect(() => {
     const before = recordWaited.current
     recordWaited.current = { id: recordId, waits: recordWaits }
-    if (recordId && recordWaits && before.id === recordId && !before.waits) select(recordId)
-  }, [recordId, recordWaits, select])
+    if (recordId && recordWaits && before.id === recordId && !before.waits) (focusInPanel() ? select : showDecision)(recordId)
+  }, [recordId, recordWaits, select, showDecision])
 
   // Pin what is shown, so a decision that arrives later with a lower seq never takes its place.
   useEffect(() => {
@@ -198,10 +203,11 @@ export function DecisionPanel() {
 
   // The outcome is stored when the mock accepts the command, with what was sent.
   const act: Act = (agentId, send, sent) => {
-    const accepted = send()
-    setRefusedId(accepted ? null : agentId)
-    if (accepted) setOutcome({ agentId, ...sent })
-    return accepted
+    const result = send()
+    setRefusedId(result === 'refused' ? agentId : null)
+    // A command already in flight sends nothing new: no outcome again.
+    if (result === 'sent') setOutcome({ agentId, ...sent })
+    return result === 'sent'
   }
 
   // A submitted edit is not a done action: neutral edge, like its band.
@@ -211,6 +217,7 @@ export function DecisionPanel() {
 
   return (
     <aside
+      ref={panelRef}
       // The landmark is named after what it shows: the decisions, or the open record.
       aria-label={recordId ? 'Agent record' : 'Decisions'}
       className={`bg-card shadow-raised flex min-h-[420px] flex-col overflow-hidden rounded-lg border border-l-[3px] ${edge}`}

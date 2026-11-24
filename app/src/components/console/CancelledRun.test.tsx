@@ -88,6 +88,24 @@ describe('cancel and run again', () => {
     expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Run again' }))
   })
 
+  it('an approve the agent never answered says so in the record after Cancel run', () => {
+    setup()
+    fireEvent.click(panel().getByRole('button', { name: 'Approve and send' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel run' }))
+    fireEvent.click(screen.getByTestId('agent-card-drafting'))
+    expect(panel().getByText('Run cancelled before the agent confirmed this')).toBeTruthy()
+  })
+
+  it('an approve the agent answered has no such line after Cancel run', () => {
+    setup()
+    fireEvent.click(panel().getByRole('button', { name: 'Approve and send' }))
+    emit({ type: 'agent_step', seq: 6, agentId: 'drafting', act: 'decided', detail: 'Sending' })
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel run' }))
+    fireEvent.click(screen.getByTestId('agent-card-drafting'))
+    expect(panel().getByText('Agent record')).toBeTruthy()
+    expect(panel().queryByText('Run cancelled before the agent confirmed this')).toBeNull()
+  })
+
   it('an edit still waiting for the agent ends as Cancelled', () => {
     setup()
     fireEvent.click(panel().getByRole('button', { name: 'Edit email' }))
@@ -96,6 +114,8 @@ describe('cancel and run again', () => {
     expect(card('drafting').getByTestId('agent-badge').textContent).toBe('Waiting for agent')
     fireEvent.click(screen.getByRole('button', { name: 'Cancel run' }))
     expect(card('drafting').getByTestId('agent-badge').textContent).toBe('Cancelled')
+    fireEvent.click(screen.getByTestId('agent-card-drafting'))
+    expect(panel().getByText('Run cancelled before the agent confirmed this')).toBeTruthy()
   })
 
   it('an answer still waiting for the agent ends as Cancelled', () => {
@@ -114,6 +134,8 @@ describe('cancel and run again', () => {
     expect(card('scheduling').getByTestId('agent-badge').textContent).toBe('Waiting for agent')
     fireEvent.click(screen.getByRole('button', { name: 'Cancel run' }))
     expect(card('scheduling').getByTestId('agent-badge').textContent).toBe('Cancelled')
+    fireEvent.click(screen.getByTestId('agent-card-scheduling'))
+    expect(panel().getByText('Run cancelled before the agent confirmed this')).toBeTruthy()
   })
 
   it('a retry still waiting for the agent ends as Cancelled', () => {
@@ -131,6 +153,40 @@ describe('cancel and run again', () => {
     expect(card('scheduling').getByTestId('agent-badge').textContent).toBe('Waiting for agent')
     fireEvent.click(screen.getByRole('button', { name: 'Cancel run' }))
     expect(card('scheduling').getByTestId('agent-badge').textContent).toBe('Cancelled')
+    fireEvent.click(screen.getByTestId('agent-card-scheduling'))
+    expect(panel().getByText('Run cancelled before the agent confirmed this')).toBeTruthy()
+  })
+
+  it('an edit the agent answered with the re-emitted confirmation has no line after Cancel run', () => {
+    setup()
+    fireEvent.click(panel().getByRole('button', { name: 'Edit email' }))
+    fireEvent.change(panel().getByLabelText('Subject'), { target: { value: 'Changed' } })
+    fireEvent.click(panel().getByRole('button', { name: 'Save changes' }))
+    emit({
+      type: 'confirmation_required',
+      seq: 6,
+      agentId: 'drafting',
+      action: 'send_email',
+      target: 't@example.test',
+      effectClass: 'irreversible',
+      draft: { subject: 'Changed', body: 'B' },
+      revision: 2,
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel run' }))
+    fireEvent.click(screen.getByTestId('agent-card-drafting'))
+    expect(panel().getByText('Agent record')).toBeTruthy()
+    expect(panel().queryByText('Run cancelled before the agent confirmed this')).toBeNull()
+  })
+
+  it('a pending edit with a step but no new gate keeps the line after Cancel run', () => {
+    setup()
+    fireEvent.click(panel().getByRole('button', { name: 'Edit email' }))
+    fireEvent.change(panel().getByLabelText('Subject'), { target: { value: 'Changed' } })
+    fireEvent.click(panel().getByRole('button', { name: 'Save changes' }))
+    emit({ type: 'agent_step', seq: 6, agentId: 'drafting', act: 'decided', detail: 'Rewriting' })
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel run' }))
+    fireEvent.click(screen.getByTestId('agent-card-drafting'))
+    expect(panel().getByText('Run cancelled before the agent confirmed this')).toBeTruthy()
   })
 
   it('keeps an open agent record when the run is cancelled', () => {

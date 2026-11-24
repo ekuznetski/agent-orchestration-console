@@ -95,9 +95,9 @@ describe('commands', () => {
   it('records a command only when the orchestrator accepts it', () => {
     startWithGate()
     fake.orchestrator.approve.mockReturnValueOnce(false)
-    expect(approve('agent_drafting')).toBe(false)
+    expect(approve('agent_drafting')).toBe('refused')
     expect(drafting().actions).toEqual([])
-    expect(approve('agent_drafting')).toBe(true)
+    expect(approve('agent_drafting')).toBe('sent')
     expect(drafting().actions).toEqual([
       {
         kind: 'approve',
@@ -113,8 +113,8 @@ describe('commands', () => {
 
   it('does not call the orchestrator for a command while one is pending, and reports it as in flight', () => {
     startWithGate()
-    expect(approve('agent_drafting')).toBe(true)
-    expect(approve('agent_drafting')).toBe(true)
+    expect(approve('agent_drafting')).toBe('sent')
+    expect(approve('agent_drafting')).toBe('in-flight')
     expect(fake.orchestrator.approve).toHaveBeenCalledTimes(1)
     expect(drafting().actions).toHaveLength(1)
   })
@@ -122,7 +122,7 @@ describe('commands', () => {
   it('passes edit, resolve and retry through to the orchestrator', () => {
     startWithGate()
     const draft = { subject: 'S2', body: 'B2' }
-    expect(edit('agent_drafting', draft)).toBe(true)
+    expect(edit('agent_drafting', draft)).toBe('sent')
     expect(fake.orchestrator.edit).toHaveBeenCalledWith('agent_drafting', draft)
     emit({
       type: 'confirmation_required',
@@ -133,10 +133,10 @@ describe('commands', () => {
       effectClass: 'irreversible',
       draft,
     })
-    expect(resolve('agent_drafting', { words: 'week_of_9_mar' })).toBe(true)
+    expect(resolve('agent_drafting', { words: 'week_of_9_mar' })).toBe('sent')
     expect(fake.orchestrator.resolve).toHaveBeenCalledWith('agent_drafting', 'week_of_9_mar')
     emit({ type: 'agent_step', seq: 4, agentId: 'agent_drafting', act: 'decided', detail: 'd' })
-    expect(retry('agent_drafting')).toBe(true)
+    expect(retry('agent_drafting')).toBe('sent')
     expect(fake.orchestrator.retry).toHaveBeenCalledWith('agent_drafting')
   })
 })

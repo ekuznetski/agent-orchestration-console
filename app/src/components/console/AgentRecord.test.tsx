@@ -122,6 +122,18 @@ describe('agent record', () => {
     setup({ waiting: false })
     openCard('drafting')
     expect(panel().getByText('Agent record')).toBeTruthy()
+    const elsewhere = within(screen.getByTestId('agent-card-research')).getByRole('button', { name: /Show steps/ })
+    elsewhere.focus()
+    confirmation()
+    expect(panel().getByText('Send this email?')).toBeTruthy()
+    // An event never moves focus.
+    expect(document.activeElement).toBe(elsewhere)
+  })
+
+  it('focus on the record heading follows to the decision when the agent starts waiting', () => {
+    setup({ waiting: false })
+    openCard('drafting')
+    expect(document.activeElement).toBe(panel().getByRole('heading', { name: 'Agent record' }))
     confirmation()
     expect(panel().getByText('Send this email?')).toBeTruthy()
     expect(document.activeElement).toBe(panel().getByRole('group', { name: 'Draft it' }))

@@ -54,20 +54,25 @@ export function reset(): void {
   useViewStore.getState().runReset()
 }
 
-/** Sends one command. A second command while one is pending does not reach the mock and returns true
- * (it is already in flight). Only a command the mock accepted (true) is recorded, with what was sent. */
-function send(agentId: string, call: (orc: MockOrchestrator) => boolean, sent: (agent: AgentModel) => Sent): boolean {
+/** What happened to a command: sent (the mock accepted it and it is recorded), in flight (the agent's previous
+ * command is still pending, so nothing reached the mock), or refused by the mock. */
+export type SendResult = 'sent' | 'in-flight' | 'refused'
+
+/** Sends one command. A second command while one is pending does not reach the mock ('in-flight'). Only a
+ * command the mock accepted is recorded, with what was sent. */
+function send(agentId: string, call: (orc: MockOrchestrator) => boolean, sent: (agent: AgentModel) => Sent): SendResult {
   // No guard for a missing orchestrator: no rendered control sends a command before start or after cancel
   // (the decision queue is empty then; architecture section 2).
   const agent = useConsoleStore.getState().agents[agentId]
   // A second click before the agent answers: the command is already in flight.
-  if (pendingCommand(agent)) return true
+  if (pendingCommand(agent)) return 'in-flight'
   // Read before the call: the agent's next event after this seq answers the command.
   const afterSeq = agent.maxSeq
   const record = sent(agent)
   const accepted = call(orchestrator!)
-  if (accepted) apply({ type: 'command_sent', agentId, afterSeq, ...record })
-  return accepted
+  if (!accepted) return 'refused'
+  apply({ type: 'command_sent', agentId, afterSeq, ...record })
+  return 'sent'
 }
 
 /** Approves the agent's open confirmation; records the approved action, target, effect class, revision and full draft. */
@@ -108,6 +113,7 @@ export const resolve = (agentId: string, answer: { optionId: string } | { words:
     },
   )
 
+/** The one place the next attempt number is computed; the outcome reads it from the recorded action. */
 export const retry = (agentId: string) =>
   send(
     agentId,

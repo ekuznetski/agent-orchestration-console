@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useClearOnNextAction } from '@/hooks/useClearOnNextAction'
 import { Button } from '@/components/ui/button'
+import type { Action } from '@/store/console.reducer'
 import { useConsoleStore } from '@/store/console.store'
 import { shownDecisionNow } from '@/store/hooks'
 import { useViewStore } from '@/store/view.store'
@@ -16,14 +17,16 @@ export function RetryButton({ agentId, label = 'Retry' }: { agentId: string; lab
   useClearOnNextAction(refused, () => setRefused(false))
 
   const onClick = () => {
-    const state = useConsoleStore.getState()
     const view = useViewStore.getState()
     // Outcomes only in decisions mode: an open record is never replaced.
     const panelIsAboutIt = view.mode === 'decisions' && (shownDecisionNow() === agentId || view.outcome !== null)
-    const attempt = state.agents[agentId].attempts[state.agents[agentId].attempts.length - 1].n + 1
-    const accepted = retry(agentId)
-    setRefused(!accepted)
-    if (accepted && panelIsAboutIt) view.setOutcome({ agentId, kind: 'retry', attempt })
+    const result = retry(agentId)
+    setRefused(result === 'refused')
+    if (result !== 'sent' || !panelIsAboutIt) return
+    // Only a retry actually sent shows its outcome, with the attempt the manager recorded: send() applies
+    // command_sent before it returns 'sent', so the agent's last action is this retry.
+    const sent = useConsoleStore.getState().agents[agentId].actions.at(-1) as Extract<Action, { kind: 'retry' }>
+    view.setOutcome({ agentId, kind: 'retry', attempt: sent.attempt })
   }
 
   return (

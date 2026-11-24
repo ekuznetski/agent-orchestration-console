@@ -3,7 +3,7 @@ import { actionLabels, agentType, effectClassLabel, resultKindLabel } from '@/co
 import type { Action } from '@/store/console.reducer'
 import { useAgent } from '@/store/hooks'
 import { useConsoleStore } from '@/store/console.store'
-import { isWaitingForAgent, statusLineOf } from '@/store/selectors'
+import { isWaitingForAgent, statusLineOf, unansweredAtCancel } from '@/store/selectors'
 import { StatusBadge } from './StatusBadge'
 import { ClampedText } from './ClampedText'
 
@@ -60,6 +60,7 @@ function ActionEntry({ action }: { action: Action }) {
  * result) go below what the user did, so their arrival does not move what is already on screen. */
 export function AgentRecord({ id }: { id: string }) {
   const agent = useAgent(id)
+  const unconfirmed = unansweredAtCancel(agent)
   const result = useConsoleStore((state) => state.result)
   const cancelled = useConsoleStore((state) => state.status === 'cancelled')
   const items = result ? result.event.items.filter((item) => item.agentId === id) : []
@@ -84,7 +85,13 @@ export function AgentRecord({ id }: { id: string }) {
         {agent.actions.length === 0 ? (
           <p className="text-muted-foreground">You have not acted on this agent.</p>
         ) : (
-          agent.actions.map((action, i) => <ActionEntry key={i} action={action} />)
+          agent.actions.map((action, i) => (
+            <div key={i} className="flex flex-col gap-1.5">
+              <ActionEntry action={action} />
+              {/* Honest about the unknown: the run stopped before the agent said whether this took effect. */}
+              {action === unconfirmed && <p className="text-muted-foreground">Run cancelled before the agent confirmed this</p>}
+            </div>
+          ))
         )}
       </section>
       {items.length > 0 && result && (

@@ -45,6 +45,8 @@ export interface ViewStore {
   answers: Record<string, Answer>
   /** Picks a decision, switches to decisions mode and clears the outcome. */
   select: (id: string) => void
+  /** The panel's own switch to a decision (after an event, not a click): like select, but focus stays where it is. */
+  showDecision: (id: string) => void
   /** Opens an agent's record in the panel. */
   openRecord: (id: string) => void
   /** Keeps what the panel shows, without touching the outcome. */
@@ -85,6 +87,7 @@ export const useViewStore = create<ViewStore>()((set) => ({
   jitter: false,
   runs: 0,
   select: (id) => set((state) => ({ mode: 'decisions', selectedId: id, outcome: null, focusRequest: state.focusRequest + 1 })),
+  showDecision: (id) => set({ mode: 'decisions', selectedId: id, outcome: null }),
   openRecord: (id) => set((state) => ({ mode: 'agent', recordId: id, focusRequest: state.focusRequest + 1 })),
   pin: (id) => set({ selectedId: id }),
   setOutcome: (outcome) => set({ outcome }),

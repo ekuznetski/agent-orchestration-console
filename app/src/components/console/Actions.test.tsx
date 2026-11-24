@@ -5,6 +5,7 @@ import { cancel, reset, start } from '@/subscriptionManager/subscription'
 import { AgentList } from './AgentCard'
 import { DecisionPanel } from './DecisionPanel'
 import { ResultBlock } from './ResultBlock'
+import { RetryButton } from './RetryButton'
 
 vi.mock('@mock/orchestrator.js', async () => (await import('@/test/fakeOrchestrator')).fakeModule)
 
@@ -171,10 +172,13 @@ describe('edit', () => {
 
     step('drafting')
     expect(outcome().textContent).toBe('Draft itEdit submittedThe agent is preparing the edited email...')
+    // Focus is elsewhere when the answer arrives: the switch must leave it there.
+    const elsewhere = within(screen.getByTestId('agent-card-research')).getByRole('button', { name: /Show steps/ })
+    elsewhere.focus()
     confirmation({ draft: { subject: 'New subject', body: 'New body' }, revision: 2 })
-    // The answer to the user's own Save opens by itself, focused on the decision, not on Approve.
+    // The answer to the user's own Save opens by itself; an event never moves focus.
     expect(panel().getByText('Send the edited email?')).toBeTruthy()
-    expect(document.activeElement).toBe(panel().getByRole('group', { name: 'Draft it' }))
+    expect(document.activeElement).toBe(elsewhere)
     expect(panel().getByText('Edited version')).toBeTruthy()
     click('Approve and send')
     expect(fakeOrchestrator.approve).toHaveBeenCalledWith('drafting')
@@ -190,6 +194,18 @@ describe('edit', () => {
     expect(panel().getByText('This action changes nothing')).toBeTruthy()
     confirmation({ effectClass: 'billing' })
     expect(panel().getByText('Side effect: the agent acts on your behalf')).toBeTruthy()
+  })
+
+  it('focus inside the replaced outcome follows to the re-asked confirmation, not to body', () => {
+    setup()
+    openCard('drafting')
+    click('Edit email')
+    fireEvent.change(panel().getByLabelText('Subject'), { target: { value: 'Changed' } })
+    click('Save changes')
+    expect(document.activeElement).toBe(panel().getByRole('button', { name: 'Next decision: Research it' }))
+    confirmation({ revision: 2 })
+    expect(panel().getByText('Send the edited email?')).toBeTruthy()
+    expect(document.activeElement).toBe(panel().getByRole('group', { name: 'Draft it' }))
   })
 
   it('does not switch to the re-asked confirmation when the user moved away', () => {
@@ -211,6 +227,53 @@ describe('edit', () => {
     fireEvent.click(panel().getByRole('button', { name: 'Edit email' }), { detail: 2 })
     expect(fakeOrchestrator.approve).not.toHaveBeenCalled()
     expect(panel().getByText('Send this email?')).toBeTruthy()
+  })
+
+  it('edits and saves a draft that has neither subject nor body', () => {
+    setup()
+    confirmation({ draft: {} })
+    openCard('drafting')
+    click('Edit email')
+    const save = () => panel().getByRole('button', { name: 'Save changes' }) as HTMLButtonElement
+    expect(save().disabled).toBe(true)
+    fireEvent.change(panel().getByLabelText('Subject'), { target: { value: 'New subject' } })
+    fireEvent.change(panel().getByLabelText('Message'), { target: { value: 'New body' } })
+    expect(save().disabled).toBe(false)
+    click('Save changes')
+    expect(fakeOrchestrator.edit).toHaveBeenCalledWith('drafting', { subject: 'New subject', body: 'New body' })
+  })
+
+  it('adds a subject to a draft that has only a body', () => {
+    setup()
+    confirmation({ draft: { body: 'Only body' } })
+    openCard('drafting')
+    click('Edit email')
+    fireEvent.change(panel().getByLabelText('Subject'), { target: { value: 'Added' } })
+    click('Save changes')
+    expect(fakeOrchestrator.edit).toHaveBeenCalledWith('drafting', { body: 'Only body', subject: 'Added' })
+  })
+
+  it('does not send a missing field the user left empty', () => {
+    setup()
+    confirmation({ draft: { body: 'Only body' } })
+    openCard('drafting')
+    click('Edit email')
+    const subject = panel().getByLabelText('Subject') as HTMLInputElement
+    expect(subject.value).toBe('')
+    fireEvent.change(subject, { target: { value: 'Typed' } })
+    fireEvent.change(subject, { target: { value: '' } })
+    fireEvent.change(panel().getByLabelText('Message'), { target: { value: 'Changed body' } })
+    click('Save changes')
+    expect(fakeOrchestrator.edit).toHaveBeenCalledWith('drafting', { body: 'Changed body' })
+  })
+
+  it('keeps Save disabled when only spaces were typed into a missing field', () => {
+    setup()
+    confirmation({ draft: { body: 'B' } })
+    openCard('drafting')
+    click('Edit email')
+    fireEvent.change(panel().getByLabelText('Subject'), { target: { value: '   ' } })
+    expect((panel().getByRole('button', { name: 'Save changes' }) as HTMLButtonElement).disabled).toBe(true)
   })
 
   it('labels an unknown action generically and shows every draft field', () => {
@@ -409,6 +472,22 @@ describe('panel matrix', () => {
     expect((panel().getByLabelText('Subject') as HTMLInputElement).value).toBe('Typed')
   })
 
+  it('an editor that reopens by itself in the empty panel does not take focus', () => {
+    setup({ waiting: false })
+    status('research', 'running', { attempt: 2 })
+    status('drafting', 'running')
+    confirmation()
+    click('Edit email')
+    fireEvent.change(panel().getByLabelText('Subject'), { target: { value: 'Typed' } })
+    status('drafting', 'running')
+    expect(panel().getByText('Nothing needs you right now')).toBeTruthy()
+    const elsewhere = within(screen.getByTestId('agent-card-research')).getByRole('button', { name: /Show steps/ })
+    elsewhere.focus()
+    confirmation()
+    expect((panel().getByLabelText('Subject') as HTMLInputElement).value).toBe('Typed')
+    expect(document.activeElement).toBe(elsewhere)
+  })
+
   it("A fails while its confirmation is shown: A's failure replaces it in place", () => {
     setup()
     openCard('drafting')
@@ -480,6 +559,22 @@ describe('panel matrix', () => {
     expect(panel().getByText('The agents are done. The result appears at the top.')).toBeTruthy()
     emit({ type: 'result', seq: 3, summary: 'S', items: [] })
     expect(panel().getByText('The run is finished. The result is at the top.')).toBeTruthy()
+  })
+})
+
+describe('retry twice', () => {
+  it('a second Retry click while the first is pending sends nothing and does not replace the shown outcome', () => {
+    setup()
+    const { container } = render(<RetryButton agentId="research" />)
+    const retryResearch = () => fireEvent.click(within(container).getByRole('button', { name: 'Retry' }))
+    retryResearch()
+    openCard('drafting')
+    click('Approve and send')
+    expect(within(outcome()).getByText('Approved')).toBeTruthy()
+    // Research has not answered yet: this click is in flight, so drafting's outcome stays.
+    retryResearch()
+    expect(within(outcome()).getByText('Approved')).toBeTruthy()
+    expect(fakeOrchestrator.retry).toHaveBeenCalledTimes(1)
   })
 })
 

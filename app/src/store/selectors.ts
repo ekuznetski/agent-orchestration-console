@@ -18,11 +18,21 @@ export function phaseOf(state: RunState): Phase {
 /** The command the agent has not answered yet. There is no ack in the API: an edit is answered
  * only by a newer gate (the re-emitted confirmation), any other command by any newer event. */
 export function pendingCommand(agent: AgentModel): Action | null {
-  const last = agent.actions.at(-1)
   // A cancelled agent will not answer: Cancel run ended the wait along with the run.
-  if (!last || agent.tag === 'cancelled') return null
+  return agent.tag === 'cancelled' ? null : unanswered(agent)
+}
+
+function unanswered(agent: AgentModel): Action | null {
+  const last = agent.actions.at(-1)
+  if (!last) return null
   if (last.kind === 'edit') return agent.gate && agent.gate.event.seq > last.afterSeq ? null : last
   return agent.maxSeq > last.afterSeq ? null : last
+}
+
+/** The user's last command the agent never answered before Cancel run (no event after it): whether it took
+ * effect is unknown. Nothing arrives after a cancel, so the model as it stands answers this. */
+export function unansweredAtCancel(agent: AgentModel): Action | null {
+  return agent.tag === 'cancelled' ? unanswered(agent) : null
 }
 
 /** A command the mock accepted and the agent has not answered yet: the badge says "Waiting for agent" instead of the need it

@@ -92,8 +92,8 @@ Two stores, because they change for different reasons and have different lifetim
   so gates are states derived from the event order rather than flags someone has to reset. Results are versioned
   and marked outdated by a newer status until the next result replaces them. One exception to "the newest event
   decides": while an edit is pending the model keeps the gate (needs_approval, its place in the queue) until the
-  agent re-emits its confirmation; the card shows "Waiting for agent" meanwhile, like any pending command. Each agent's tag is
-  stored, derived on every event by `tagOf`, and set to cancelled by Cancel run.
+  agent re-emits its confirmation; the card shows "Waiting for agent" meanwhile, like any pending command. Each
+  agent's tag is stored, derived on every event by `tagOf`, and set to cancelled by Cancel run.
 - **View store** (`view.store.ts`): what this screen shows and what the user is typing: the selected decision,
   panel mode (decisions or an agent's record), the outcome of the last action, open edits, question answers,
   request text, speed, jitter, the run clock. None of it is part of the run model or replayed into it. The run
@@ -151,12 +151,17 @@ Two stores, because they change for different reasons and have different lifetim
   spinner while the agent prepares the edited email, and opens "Send the edited email?" when it arrives. It is
   one of the three switches the panel makes on its own (with the empty panel opening the first decision, and an
   open record whose agent starts waiting): it is the direct answer to the user's own Save, on the agent the panel
-  already shows. Focus goes to the decision, not to Approve, and Approve ignores the second click of a double
-  click, so a double click on Save cannot send. If the user moved on before it arrived, the Next decision button
-  points to it instead.
+  already shows. Focus outside the panel stays where the user left it; focus inside the panel content being
+  replaced moves to the new decision of the same agent, so it never drops to the page body. Approve ignores the
+  second click of a double click, so a double click on Save cannot send. If the user moved on before it arrived,
+  the Next decision button points to it instead.
 - **"Next decision: <agent>" can change its label while the user reads the outcome** (it pointed to Research,
   then to Draft when the edited confirmation arrived): it only navigates and takes no action, and the agent that
   asks again after the user's own action is the right next step.
+- **The result can arrive before the last agent's Done.** Delivery order wobbles (mock/README.md, "Three things
+  that will bite you"), so for that moment the result block shows its outcome while the top bar still says
+  Running; it settles when the Done arrives. Not observed with this mock: across 80 jittered runs the result
+  always came after every status.
 - **Long single-line texts end in an ellipsis**, with the full text in the tooltip and in the agent record:
   one-line slots keep the cards at a fixed height while events stream.
 - **The decision panel changes height when the user switches decisions**: that change follows the user's click,
@@ -171,15 +176,16 @@ Two stores, because they change for different reasons and have different lifetim
 
 The console guards only situations the contract allows. These it does not check:
 
-| Case                                      | Contract line                                                                                   | What would happen if it happened anyway                                                                                                                                                                                                                           |
-| ----------------------------------------- | ----------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Events before `plan`                      | mock/README.md, `plan`: "Fired once, first."                                                    | The agent is not in the model yet; the reducer throws, the `try/catch` drops that event's change and the top bar warns "The screen may not match what the agents did"; on a first run the start card is still up and shows no warning.                            |
-| A second `plan`                           | Same line                                                                                       | It replaces the plan and resets every agent to queued; the run so far is lost from the screen, without a warning.                                                                                                                                                 |
-| An agent outside `plan.subtasks`          | mock/README.md, `plan`: "`subtask.id === agentId` - that's your join key."                      | Same as an event before `plan`: dropped, with the warning.                                                                                                                                                                                                        |
-| Events of an old run after `reset()`      | mock/README.md, `reset()`: "Cancels every pending timer"                                        | None arrive: the old run is unsubscribed before `reset()`, so an event it still fired would not reach the store.                                                                                                                                                  |
-| Malformed events, missing `type` or `seq` | mock/README.md: "Every event is a plain object with `type`, `seq`, `ts`, plus its own payload." | A missing `type` is logged and skipped as an unknown type. A missing `seq` makes every ordering comparison false, so the event may be dropped or misplaced without a warning, and the agent's `maxSeq` becomes NaN for good, so its pending command never clears. |
-| Duplicate `seq`                           | mock/README.md, `seq`: "monotonic, unique, 1-based"                                             | For one agent's status the second is dropped as stale; a step with the same `seq` as another is kept next to it.                                                                                                                                                  |
-| A command throwing                        | mock/README.md, commands: "They never throw."                                                   | The exception leaves the click handler, the command is not recorded, and the panel stays as it was; the error boundary does not see errors in event handlers.                                                                                                     |
+| Case                                      | Contract line                                                                                             | What would happen if it happened anyway                                                                                                                                                                                                                           |
+| ----------------------------------------- | --------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Events before `plan`                      | mock/README.md, `plan`: "Fired once, first."                                                              | The agent is not in the model yet; the reducer throws, the `try/catch` drops that event's change and the top bar warns "The screen may not match what the agents did"; on a first run the start card is still up and shows no warning.                            |
+| A second `plan`                           | Same line                                                                                                 | It replaces the plan and resets every agent to queued; the run so far is lost from the screen, without a warning.                                                                                                                                                 |
+| An agent outside `plan.subtasks`          | mock/README.md, `plan`: "`subtask.id === agentId` - that's your join key."                                | Same as an event before `plan`: dropped, with the warning.                                                                                                                                                                                                        |
+| Events of an old run after `reset()`      | mock/README.md, `reset()`: "Cancels every pending timer"                                                  | None arrive: the old run is unsubscribed before `reset()`, so an event it still fired would not reach the store.                                                                                                                                                  |
+| Malformed events, missing `type` or `seq` | mock/README.md: "Every event is a plain object with `type`, `seq`, `ts`, plus its own payload."           | A missing `type` is logged and skipped as an unknown type. A missing `seq` makes every ordering comparison false, so the event may be dropped or misplaced without a warning, and the agent's `maxSeq` becomes NaN for good, so its pending command never clears. |
+| Duplicate `seq`                           | mock/README.md, `seq`: "monotonic, unique, 1-based"                                                       | For one agent's status the second is dropped as stale; a step with the same `seq` as another is kept next to it.                                                                                                                                                  |
+| A command throwing                        | mock/README.md, commands: "They never throw."                                                             | The exception leaves the click handler, the command is not recorded, and the panel stays as it was; the error boundary does not see errors in event handlers.                                                                                                     |
+| Typed words equal to an option id         | mock/README.md, `resolve(agentId, choice)`: "`choice` is an option `id`, an option object, or free text." | Free text that happens to equal an option id (for example `week_of_9_mar`) is read as picking that option. The console cannot tell the two apart for typed text, so it sends the words as typed.                                                                  |
 
 What it does handle, because the contract allows it:
 
@@ -192,8 +198,8 @@ What it does handle, because the contract allows it:
 - Four deliberate exceptions: an unknown event type is logged and skipped; a `try/catch` around `reduce`, so a
   reducer bug drops that event's model change and the top bar shows the warning instead of the store freezing; an
   error boundary that offers "Start over"; and a command sent while the agent's previous one is pending does not
-  reach the mock (it reports `true`, already in flight), because after `edit()` the mock still accepts
-  `approve()` until it re-emits the confirmation and would send the replaced draft.
+  reach the mock (it reports it as in flight, and no outcome shows again), because after `edit()` the mock still
+  accepts `approve()` until it re-emits the confirmation and would send the replaced draft.
 
 ## 8. Scale: what breaks first
 

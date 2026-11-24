@@ -2,7 +2,17 @@ import { describe, expect, it } from 'vitest'
 import type { OrchestratorEvent } from '@mock/orchestrator.js'
 import fixture from '../../../fixtures/events.json'
 import { initialState, reduce, type ConsoleEvent, type RunState } from './console.reducer'
-import { decisionQueue, needsUser, pendingCommand, phaseOf, runHeader, statusLineOf, traceOf, waitingQueue } from './selectors'
+import {
+  decisionQueue,
+  needsUser,
+  pendingCommand,
+  phaseOf,
+  runHeader,
+  statusLineOf,
+  traceOf,
+  unansweredAtCancel,
+  waitingQueue,
+} from './selectors'
 
 const events = fixture as OrchestratorEvent[]
 
@@ -120,6 +130,28 @@ describe('pendingCommand', () => {
     const state = run([plan(['d']), confirmation('d'), sent('d', 'edit'), step('d')])
     expect(pendingCommand(state.agents.d)?.kind).toBe('edit')
     expect(pendingCommand(run([confirmation('d')], state).agents.d)).toBeNull()
+  })
+})
+
+describe('unansweredAtCancel', () => {
+  const cancel: ConsoleEvent = { type: 'run_cancelled' }
+  it('is the last command the agent never answered before Cancel run', () => {
+    const state = run([plan(['d']), confirmation('d'), sent('d', 'approve'), cancel])
+    expect(unansweredAtCancel(state.agents.d)?.kind).toBe('approve')
+  })
+
+  it('is null when the agent answered before Cancel run', () => {
+    expect(unansweredAtCancel(run([plan(['d']), confirmation('d'), sent('d', 'approve'), step('d'), cancel]).agents.d)).toBeNull()
+  })
+
+  it('is null without Cancel run, while the command is simply pending', () => {
+    expect(unansweredAtCancel(run([plan(['d']), confirmation('d'), sent('d', 'approve')]).agents.d)).toBeNull()
+  })
+
+  it('counts an edit as unanswered after a step without a new gate, and answered after the re-emitted gate', () => {
+    const edited = run([plan(['d']), confirmation('d'), sent('d', 'edit'), step('d')])
+    expect(unansweredAtCancel(run([cancel], edited).agents.d)?.kind).toBe('edit')
+    expect(unansweredAtCancel(run([confirmation('d'), cancel], edited).agents.d)).toBeNull()
   })
 })
 

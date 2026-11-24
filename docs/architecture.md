@@ -55,7 +55,9 @@ What each call clears in the view store (request, speed and jitter always stay):
   the handler returns. That relies on `mock/README.md`: the mock is "driven by `setTimeout`", so an agent's answer
   never arrives inside the call. `afterSeq` is the agent's `maxSeq` read before the call. `command_sent` also
   carries what was actually sent (section 3, Actions), so the agent record can show it later. A command sent while the agent's previous command is still
-  pending does not reach the mock and returns `true` (it is already in flight), so it never reads as refused
+  pending does not reach the mock and returns `'in-flight'` (`send` returns `'sent'`, `'in-flight'` or `'refused'`),
+  so it never reads as refused and never shows an outcome again; only `'sent'` stores an outcome. The next retry's
+  attempt number is computed once, by `retry`, and the outcome reads it from the recorded action
   (deliberate exception 4 below).
   Components show "The agent did not accept this action" when a command is refused.
 
@@ -107,7 +109,7 @@ No guard without a contract line. These four are deliberate, each with its reaso
    store for the rest of the run.
 3. The app error boundary (`AppErrorFallback`) with "Start over". Reason: a render bug must leave the user a
    way back to a working screen.
-4. `send` does not call the mock for a command while the agent's previous one is pending, and returns `true`.
+4. `send` does not call the mock for a command while the agent's previous one is pending, and returns `'in-flight'`.
    Reason: a real contract case. After `edit()` the mock keeps the confirmation parked until it re-emits it, so
    it would accept an `approve()` in that window and send the draft the user had just replaced; the same
    guard stops a double click from sending twice.
@@ -173,11 +175,11 @@ is not in the queue and gets no Retry; a failure without `error` is offered Retr
 
 | Field | Meaning |
 | --- | --- |
-| `mode` | `decisions` or `agent`: what the panel shows. `select(id)` and `backToDecisions()` set `decisions`; `openRecord(id)` sets `agent`. `start` and `reset` return to `decisions`; `cancel` keeps an open record. |
-| `selectedId` | The decision the user picked, kept while a record is open so the record's "Next decision" returns to it while it still waits. `select(id)` also clears the outcome; `pin(id)` does not. |
+| `mode` | `decisions` or `agent`: what the panel shows. `select(id)` and `showDecision(id)` (the panel's own switch) set `decisions`; `openRecord(id)` sets `agent`. `start` and `reset` return to `decisions`; `cancel` keeps an open record. |
+| `selectedId` | The decision the user picked, kept while a record is open so the record's "Next decision" returns to it while it still waits. `select(id)` and `showDecision(id)` also clear the outcome; `pin(id)` does not. |
 | `recordId` | The agent whose record is open in `agent` mode. |
 | `outcome` | What the user sent, stored when the mock accepted the command: `{ agentId, kind, answer?, attempt? }` for approve, edit, resolve or retry. Never rebuilt from the run model, so it cannot disappear when the agent answers. The panel shows it until the user moves. |
-| `focusRequest` | A counter bumped by `select`, `openRecord` and `backToDecisions`; the panel moves focus to what it then shows. Reset to 0 by `start` and `reset`. |
+| `focusRequest` | A counter bumped by `select` and `openRecord` (user actions); the panel moves focus to what it then shows. `showDecision` does not bump it: an event never moves focus (the panel calls `select` instead only when focus was inside the content being replaced). Reset to 0 by `start` and `reset`. |
 | `clock` | The run clock: `total` ms of finished working spans and the open span `since`. The top bar opens it at the plan, stops it when the run ends and reopens it on an accepted Retry, so "took" and "into the run" count only the time the run worked, not the user's idle time before a Retry. Reset by `start` and `reset`. |
 | `request`, `speed`, `jitter` | The request text and the mock's speed and jitter (creation options), shared by the start card and the top bar. |
 | `startRefused` | The mock refused the last `start`; the start card shows the message until the next start. |
@@ -206,13 +208,12 @@ user's click switches the panel. Focus stays where the user put it. In practice:
   empty panel ("Nothing needs you right now ... New decisions open here"): the first decision that arrives
   opens there, since nothing is being read. The second exception is the answer to the user's own Save: while
   the panel still shows that Save's outcome ("Edit submitted" with a spinner and "The agent is preparing the
-  edited email..."), the re-asked confirmation opens by itself, focused on the decision, not on Approve; Every
+  edited email..."), the re-asked confirmation opens by itself (focus outside the panel stays where it is; focus inside the panel content being replaced moves to the new decision group of the same agent, so it never drops to the page body); Every
   command button in the panel (Approve, Edit, Save changes, Send answer, Retry) ignores the second click of a double
   click (`detail > 1`), so a double click on Save, or on Next decision, cannot act on what opens under it.
   If the user moved away first (a card click or Next decision), there is no switch.
   The third: when the agent whose record is open starts waiting for the user (its confirmation or question
-  arrives while the user reads its record), the panel opens that agent's decision, with the same focus and
-  double-click rules. The record's footer offers its own agent first when it waits.
+  arrives while the user reads its record), the panel opens that agent's decision, with the same double-click and focus rules. The record's footer offers its own agent first when it waits.
 - The outcome's second line and the button slot under it change in place: the second line has a fixed height of
   two lines (the card's status line stays one line, with the full text in its tooltip), and the slot keeps its height whether it holds the button or "Nothing else needs you right now."
 - There is no auto-advance and no Prev / Next: the user moves by the Next decision button or a card click.
@@ -230,6 +231,11 @@ user's click switches the panel. Focus stays where the user put it. In practice:
   below it. The e2e watch allows exactly that, and checks the panel too: its height and its footer's position may
   change only right after the user's own input, when the result moves it, or when a decision opens in the empty
   panel.
+- An asynchronous event never moves keyboard focus elsewhere, including the three switches above: focus outside the
+  panel stays where the user left it (no scroll jump either). If the focused element is inside the panel content
+  being replaced (the outcome's Next decision button, the record heading), focus stays in the panel on the new
+  decision group of the same agent, so it never drops to the page body. The editor takes focus only when the
+  user's Edit click opened it.
 - Focus moves only after the user's own action, to the next sensible control: Edit focuses the editor's first
   field, Cancel edit gives it back to the Edit button; an outcome (after Save, Approve, Send answer, Retry) focuses the Next decision button, or the outcome
   line when nothing waits; a card click or Next decision focuses the shown decision (a group
@@ -259,13 +265,13 @@ Count = "K need you" (`waitingQueue`, without pending commands). Tests: A = `Act
 | outcome of A | B starts waiting | outcome stays; footer offers B; count +1 | A "adds the button and leaves the outcome" |
 | outcome of A | A asks again (not an edit) | outcome stays; footer offers A first | matrix |
 | outcome of A | A fails | outcome stays; second line is the failure; footer offers A | matrix |
-| waiting after Save of A | A's edited confirmation arrives | opens by itself (exception 2); focus on the decision group | A; E DoD 4 |
+| waiting after Save of A | A's edited confirmation arrives | opens by itself (exception 2); focus outside the panel unchanged, focus inside it moves to the decision group | A; E DoD 4 |
 | waiting after Save of A | the user moved away first | no switch; Next decision points to A | A "does not switch ... moved away" |
 | waiting after Save of A | A fails or finishes instead of asking again | ruled out by the contract (`edit()` "re-emits `confirmation_required`"): not handled, the spinner would stay | none (by design) |
-| record of A (not waiting) | A starts waiting, also with a pending command | A's decision opens (exception 3); focus on the decision group | R; matrix |
+| record of A (not waiting) | A starts waiting, also with a pending command | A's decision opens (exception 3); focus outside the panel unchanged, focus inside it moves to the decision group | R; matrix |
 | record of A (already waiting, opened from the result) | none | stays a record; footer offers A | R |
 | record of A | B starts waiting; the result arrives | record stays; footer offers B; a result arriving goes below "What you did" | R |
-| any | Cancel run | outcome cleared, "The run was cancelled."; a record stays; unfinished and pending agents Cancelled; focus stays on the slot, now Run again | C; matrix |
+| any | Cancel run | the record marks a last command the agent never answered ("Run cancelled before the agent confirmed this"); outcome cleared, "The run was cancelled."; a record stays; unfinished and pending agents Cancelled; focus stays on the slot, now Run again | C; matrix |
 | any | Run again | everything cleared; the new run starts with the empty panel | C |
 | any | double click Run again | the second click on Cancel run is ignored | E |
 
@@ -281,7 +287,7 @@ Count = "K need you" (`waitingQueue`, without pending commands). Tests: A = `Act
 | `AgentList` (`AgentCard.tsx`) | plan order, run status | The heading "Agents - plan order", then one card per agent in plan order; "Planning..." before the plan, or "The run was cancelled before the plan arrived." after a cancel. |
 | `AgentTrace` | its agent | `traceOf` as a numbered timeline (step numbers run across attempts, a check icon per step on a teal line that turns red into the failure row, which shows its status line verbatim); "Attempt N" dividers appear once there is a second attempt; a "Working" row with the status line while the agent runs, only if that status is newer than its last gate and the attempt has steps; empty text without steps. An open trace is capped at 400px with its own scroll; a new step or the Working row appearing or going scrolls it to the bottom unless the user scrolled up. |
 | `DecisionPanel` | shown decision, outcome, waiting count | One decision at a time in a `Frame` (see Visual design): failure, confirmation (view, editor, edited version) or question; the header shows "K need you" while decisions wait. A confirmation shows every field that will be sent; the body takes its natural height, never clipped by an inner scroll (the panel itself scrolls), so the whole draft is on screen before an irreversible action. After an accepted command the outcome replaces the decision: the first line is what was sent ("Approved", "Edit submitted", "Answer sent: ...", "Retry sent: attempt N"; at most two lines, the full answer in the tooltip and the record), the second line is the agent now ("Waiting for the agent to respond." while the command is pending, "The agent is preparing the edited email..." with a spinner after an edit (then the re-asked confirmation opens by itself), otherwise the agent's status line, verbatim (`statusLineOf`)). In the editor the body is capped at 320px with its own scroll, so Save stays reachable for a very long draft (the approval view still shows the whole draft); Save changes stays disabled until the draft differs from the current revision, so an unchanged Save cannot re-ask the same question. Under it, in a slot of fixed height, "Next decision: <agent label>" when a decision waits (the outcome's own agent first when it asks again, otherwise the longest wait), or "Nothing else needs you right now."; the switch happens only on click. Empty: "The run was cancelled." after a cancel (also before the plan), "The agents are starting" while every agent is queued, otherwise worded by phase. In `agent` mode the panel shows the record instead, under the header "Agent record", with the same footer: "Next decision: <agent>" (the picked decision while it still waits, otherwise the longest wait) or "Nothing else needs you right now." The panel header and landmark read "Decisions" (true in every state, with "K need you" beside it only while decisions wait), or "Agent record" while a record is open. The failure decision says "The 1 step ... stays" or "The N steps ... stay". |
-| `AgentRecord` | its agent, its result items, its actions | What one agent did and what the user sent: current status line (two lines of fixed height, the full text in its tooltip); "You approved" with the full sent draft (To, Subject, other fields, body at its natural height, revision) and its effect class ("Irreversible: ...", red for irreversible); "You sent an edited version"; "You answered: ..."; "You retried: attempt N". The trace stays in the card. Then, below what the user did, its result items (`result.items` for that agent, marked "Updating" while the result is outdated and the run is not cancelled): a result arriving later is added under what the user is reading, not above it. |
+| `AgentRecord` | its agent, its result items, its actions | What one agent did and what the user sent: current status line (two lines of fixed height, the full text in its tooltip); "You approved" with the full sent draft (To, Subject, other fields, body at its natural height, revision) and its effect class ("Irreversible: ...", red for irreversible); "You sent an edited version"; "You answered: ..."; "You retried: attempt N". When Cancel run came before the agent answered the last command (`unansweredAtCancel`: no event after its `afterSeq`; for an edit, no newer gate), a line under it says "Run cancelled before the agent confirmed this": for an approved irreversible send, whether it went out is unknown. The trace stays in the card. Then, below what the user did, its result items (`result.items` for that agent, marked "Updating" while the result is outdated and the run is not cancelled): a result arriving later is added under what the user is reading, not above it. |
 | `RetryButton` | its agent | The one Retry used by the panel and the partial result; in `decisions` mode it stores its outcome when the panel is about that agent or already shows an outcome; a retry from the result never replaces another agent's open decision or an open record. |
 | `EventLog` | raw log | Debug table of every event (region "Event log" inside the run card; #, seq with a late mark, time, type, agent, detail), late rows amber, failure rows red, Copy JSON (the button reads "Copied" or "Copy failed" for 2 s, from the clipboard promise). A debug view: closed by default, and when open it shows every event at full height (the page scrolls); it grows while events stream and may move the content below it. A fixed table layout with set column widths; type and agent are one line and the detail at most two (`ClampedText`, full text in the tooltip), so a long payload never widens the table. |
 | `ClampedText` | - | The one rule for text the console does not control in a bounded slot: one line with an ellipsis or at most two lines, `overflow-wrap:anywhere`, the full text in `title`. Used for card titles and status lines, trace rows, the band's agent label, the record header and status, the outcome's second line, the Next decision label, result item labels and titles, the result note, the request while a run works and the event log cells. |
@@ -412,7 +418,10 @@ Count = "K need you" (`waitingQueue`, without pending commands). Tests: A = `Act
    submitted" shows with a spinner and "The agent is preparing the edited email...". The re-emitted confirmation
    (revision 2) has a seq newer than the edit's `afterSeq`, so `pendingCommand` becomes null, and while the
    outcome is still shown the panel opens "Send the edited email?" by itself (panel rule, second exception).
-   Draft fields other than subject and body are sent back unchanged; an empty subject or body cannot be saved.
+   The editor always shows Subject and the body (both are optional in the contract): a missing one starts empty
+   and may be filled in, which counts as a change; a missing one left empty is not sent. Emptying a field the
+   agent sent blocks Save, and Save stays disabled until what it would send differs from the current revision
+   (spaces typed into a missing field do not count). Draft fields other than subject and body are sent back unchanged.
    The To row (`target`) is shown read-only in the editor.
 6. Question: the picked option sends its id to `resolve`, otherwise the trimmed own words; the chosen one has
    the dark border. Then an outcome as in 3, with the answer text that was sent.

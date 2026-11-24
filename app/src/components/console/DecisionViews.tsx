@@ -1,4 +1,4 @@
-import { useEffect, useRef, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { CircleAlert, Info } from 'lucide-react'
 import type { ConfirmationRequiredEvent, Draft, EscalationRequiredEvent } from '@mock/orchestrator.js'
 import { Button } from '@/components/ui/button'
@@ -9,12 +9,12 @@ import { Textarea } from '@/components/ui/textarea'
 import { actionLabels, effectClassLabel } from '@/config/agentTags'
 import type { AgentModel, Gate } from '@/store/console.reducer'
 import { useViewStore, type Answer, type Outcome } from '@/store/view.store'
-import { approve, edit, resolve } from '@/subscriptionManager/subscription'
+import { approve, edit, resolve, type SendResult } from '@/subscriptionManager/subscription'
 import { REFUSED, RetryButton } from './RetryButton'
 import { ClampedText } from './ClampedText'
 
-/** Runs a command and reports whether the mock accepted it; on true the panel stores the outcome with what was sent. */
-export type Act = (agentId: string, send: () => boolean, sent: Omit<Outcome, 'agentId'>) => boolean
+/** Sends a command and, only when it was actually sent, stores its outcome. Returns whether it was sent. */
+export type Act = (agentId: string, send: () => SendResult, sent: Omit<Outcome, 'agentId'>) => boolean
 
 const Row = ({ label, children }: { label: string; children: ReactNode }) => (
   <>
@@ -109,31 +109,40 @@ function Editor({
   refused,
   act,
   onCancel,
+  focusOnMount,
 }: {
   agent: AgentModel
   gate: ConfirmationRequiredEvent
   refused: boolean
   act: Act
   onCancel: () => void
+  focusOnMount: boolean
 }) {
   const labels = actionLabels(gate.action)
   const entry = useViewStore((state) => state.edits[agent.id])
   const setEdit = useViewStore((state) => state.setEdit)
   const draft = entry?.draft ?? gate.draft
   const change = (key: 'subject' | 'body', value: string) => setEdit(agent.id, { draft: { ...draft, [key]: value } })
-  const empty = (draft.subject !== undefined && draft.subject.trim() === '') || (draft.body !== undefined && draft.body.trim() === '')
-  // Saving an unchanged draft would only re-ask the same question: Save waits for a real change.
-  const unchanged = draft.subject === gate.draft.subject && draft.body === gate.draft.body
+  // Subject and body are optional in the contract: both are always editable, a missing one starts empty.
+  const sentByAgent = (key: 'subject' | 'body') => gate.draft[key] !== undefined
+  // Emptying a field the agent sent blocks Save; a field the agent did not send may stay empty.
+  const empty = (['subject', 'body'] as const).some((key) => sentByAgent(key) && (draft[key] ?? '').trim() === '')
+  // What Save would send: a field the agent did not send and the user left empty (or only spaces) is left out.
+  const payload = { ...draft }
+  for (const key of ['subject', 'body'] as const) if (!sentByAgent(key) && (payload[key] ?? '').trim() === '') delete payload[key]
+  // Saving an unchanged draft would only re-ask the same question: Save waits until what it would send differs.
+  const unchanged = (['subject', 'body'] as const).every((key) => payload[key] === gate.draft[key])
   const subjectRef = useRef<HTMLInputElement>(null)
   const bodyRef = useRef<HTMLTextAreaElement>(null)
 
-  // The editor mounts on the user's Edit click (or their return to an open editor): focus its first field.
+  // Focus the first field only when the user's Edit click opened the editor; an editor shown again after an event
+  // (a gate that reopens in the empty panel) leaves focus where it is.
   useEffect(() => {
-    ;(subjectRef.current ?? bodyRef.current)?.focus()
-  }, [])
+    if (focusOnMount) (subjectRef.current ?? bodyRef.current)?.focus()
+  }, [focusOnMount])
 
   const save = () => {
-    if (act(agent.id, () => edit(agent.id, draft), { kind: 'edit' })) setEdit(agent.id, null)
+    if (act(agent.id, () => edit(agent.id, payload), { kind: 'edit' })) setEdit(agent.id, null)
   }
 
   return (
@@ -164,30 +173,31 @@ function Editor({
           <span className="font-mono text-code [overflow-wrap:anywhere]">{gate.target}</span>
         </Row>
       </Fields>
-      {draft.subject !== undefined && (
-        <div className="flex flex-col gap-1">
-          <Label htmlFor={`subject-${agent.id}`} className="text-muted-foreground text-xs font-semibold">
-            Subject
-          </Label>
-          <Input ref={subjectRef} id={`subject-${agent.id}`} value={draft.subject} onChange={(e) => change('subject', e.target.value)} />
-        </div>
-      )}
-      {draft.body !== undefined && (
-        <div className="flex flex-col gap-1">
-          <Label htmlFor={`body-${agent.id}`} className="text-muted-foreground text-xs font-semibold">
-            {labels.bodyLabel}
-          </Label>
-          <Textarea
-            ref={bodyRef}
-            id={`body-${agent.id}`}
-            value={draft.body}
-            onChange={(e) => change('body', e.target.value)}
-            // The editor caps the body and scrolls it, so Save changes stays reachable for a very long draft; the
-            // approval view shows the whole draft.
-            className="max-h-80 min-h-60 resize-y overflow-y-auto"
-          />
-        </div>
-      )}
+      <div className="flex flex-col gap-1">
+        <Label htmlFor={`subject-${agent.id}`} className="text-muted-foreground text-xs font-semibold">
+          Subject
+        </Label>
+        <Input
+          ref={subjectRef}
+          id={`subject-${agent.id}`}
+          value={draft.subject ?? ''}
+          onChange={(e) => change('subject', e.target.value)}
+        />
+      </div>
+      <div className="flex flex-col gap-1">
+        <Label htmlFor={`body-${agent.id}`} className="text-muted-foreground text-xs font-semibold">
+          {labels.bodyLabel}
+        </Label>
+        <Textarea
+          ref={bodyRef}
+          id={`body-${agent.id}`}
+          value={draft.body ?? ''}
+          onChange={(e) => change('body', e.target.value)}
+          // The editor caps the body and scrolls it, so Save changes stays reachable for a very long draft; the
+          // approval view shows the whole draft.
+          className="max-h-80 min-h-60 resize-y overflow-y-auto"
+        />
+      </div>
     </Frame>
   )
 }
@@ -199,6 +209,8 @@ export function ConfirmationDecision({ agent, gate, refused, act }: { agent: Age
   const setEdit = useViewStore((state) => state.setEdit)
   const editRef = useRef<HTMLButtonElement>(null)
   const focusEdit = useRef(false)
+  // Whether the user's Edit click opened the editor (so the editor may take focus).
+  const [editClicked, setEditClicked] = useState(false)
 
   // Cancel edit removed the focused button; give focus back to Edit once the view is back.
   useEffect(() => {
@@ -208,11 +220,12 @@ export function ConfirmationDecision({ agent, gate, refused, act }: { agent: Age
   })
 
   const cancelEdit = () => {
+    setEditClicked(false)
     focusEdit.current = true
     setEdit(agent.id, null)
   }
 
-  if (entry) return <Editor agent={agent} gate={event} refused={refused} act={act} onCancel={cancelEdit} />
+  if (entry) return <Editor agent={agent} gate={event} refused={refused} act={act} onCancel={cancelEdit} focusOnMount={editClicked} />
 
   return (
     <Frame
@@ -237,7 +250,9 @@ export function ConfirmationDecision({ agent, gate, refused, act }: { agent: Age
               ref={editRef}
               variant="outline"
               onClick={(e) => {
-                if (e.detail <= 1) setEdit(agent.id, { draft: event.draft })
+                if (e.detail > 1) return
+                setEditClicked(true)
+                setEdit(agent.id, { draft: event.draft })
               }}
             >
               {labels.edit}
