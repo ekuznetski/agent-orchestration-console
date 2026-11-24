@@ -45,6 +45,8 @@ type ActionLabels = {
   bodyLabel: string
   /** The label of the gate's `target` row. */
   targetLabel: string
+  /** The outcome's second line while a submitted edit waits for the agent to ask again. */
+  editPending: string
 }
 
 const ACTIONS: Record<string, ActionLabels> = {
@@ -57,6 +59,7 @@ const ACTIONS: Record<string, ActionLabels> = {
     editNote: 'Nothing is sent yet. You approve the edited email next.',
     bodyLabel: 'Message',
     targetLabel: 'To',
+    editPending: 'The agent prepares the edited email; you approve it next.',
   },
 }
 
@@ -72,6 +75,7 @@ export const actionLabels = (action: string): ActionLabels =>
     editNote: 'Nothing happens yet. You approve the edited version next.',
     bodyLabel: 'Body',
     targetLabel: 'Target',
+    editPending: 'The agent prepares the edited version; you approve it next.',
   }
 
 const RESULT_KINDS: Record<string, string> = {

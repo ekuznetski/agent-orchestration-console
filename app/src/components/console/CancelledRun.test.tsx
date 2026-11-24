@@ -169,4 +169,61 @@ describe('cancel and run again', () => {
     expect(result.queryByText(/Retrying/)).toBeNull()
     expect(result.queryByRole('button', { name: 'Retry agent' })).toBeNull()
   })
+
+  it('an accepted Retry on a partial result makes the run active again; the clock skips the idle time', () => {
+    vi.useFakeTimers({ toFake: ['Date', 'setInterval', 'clearInterval', 'setTimeout', 'clearTimeout'] })
+    vi.setSystemTime(0)
+    setup()
+    act(() => vi.setSystemTime(5_000))
+    emit({
+      type: 'agent_status',
+      seq: 6,
+      agentId: 'research',
+      state: 'failed',
+      statusLine: 'Failed',
+      error: { code: 'x', message: 'm', retryable: true },
+    })
+    emit({ type: 'agent_status', seq: 7, agentId: 'drafting', state: 'done', statusLine: 'Sent' })
+    emit({ type: 'agent_status', seq: 8, agentId: 'scheduling', state: 'done', statusLine: 'Held' })
+    emit({
+      type: 'result',
+      seq: 9,
+      summary: 'Partial',
+      degraded: true,
+      items: [{ id: 'e', agentId: 'research', kind: 'error', title: 'Research failed', detail: 'jira timed out' }],
+    })
+    expect(screen.getByTestId('run-summary').textContent).toContain('took 0:05')
+    expect(screen.getByRole('button', { name: 'Run again' })).toBeTruthy()
+
+    act(() => vi.advanceTimersByTime(60_000))
+    fireEvent.click(within(screen.getByRole('region', { name: 'Result' })).getByRole('button', { name: 'Retry agent' }))
+    // Accepted, the agent has not answered yet: the run is active.
+    expect(screen.getByRole('button', { name: 'Cancel run' })).toBeTruthy()
+    expect(screen.getByRole('checkbox', { name: 'Jitter' }).getAttribute('data-disabled')).not.toBeNull()
+    expect(screen.getByTestId('run-summary').textContent).toContain('0:05 into the run')
+    act(() => vi.advanceTimersByTime(2_000))
+    expect(screen.getByTestId('run-summary').textContent).toContain('0:07 into the run')
+    vi.useRealTimers()
+  })
+
+  it('announces the phase, counts and need-you politely, but not the ticking clock', () => {
+    setup()
+    const live = [...screen.getByTestId('run-summary').querySelectorAll('[aria-live="polite"]')].map((el) => el.textContent)
+    expect(live).toEqual(['Running- 1 of 3 done', '1 needs you'])
+    expect(live.join(' ')).not.toContain('into the run')
+  })
+
+  it('shows a spinner from Run again until the plan arrives, and while the run works', () => {
+    setup()
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel run' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Run again' }))
+    const summary = within(screen.getByTestId('run-summary'))
+    expect(summary.getByText('Starting')).toBeTruthy()
+    expect(summary.getByRole('status', { name: 'Loading' })).toBeTruthy()
+    expect(within(screen.getByText('Planning...')).getByRole('status', { name: 'Loading' })).toBeTruthy()
+    emit({ type: 'plan', seq: 1, runId: 'r2', task: 'T', subtasks: [{ id: 'research', type: 'research', label: 'Research it' }] })
+    emit({ type: 'agent_status', seq: 2, agentId: 'research', state: 'running', statusLine: 'Working' })
+    expect(summary.getByText('Running')).toBeTruthy()
+    expect(summary.getByRole('status', { name: 'Loading' })).toBeTruthy()
+  })
 })

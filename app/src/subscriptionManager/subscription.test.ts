@@ -100,7 +100,15 @@ describe('commands', () => {
     expect(drafting().actions).toEqual([])
     expect(approve('agent_drafting')).toBe(true)
     expect(drafting().actions).toEqual([
-      { kind: 'approve', afterSeq: 2, action: 'send_email', target: 't', revision: 1, draft: { subject: 'S', body: 'B' } },
+      {
+        kind: 'approve',
+        afterSeq: 2,
+        action: 'send_email',
+        target: 't',
+        effectClass: 'irreversible',
+        revision: 1,
+        draft: { subject: 'S', body: 'B' },
+      },
     ])
   })
 
@@ -112,7 +120,15 @@ describe('commands', () => {
     })
     expect(approve('agent_drafting')).toBe(true)
     expect(drafting().actions).toEqual([
-      { kind: 'approve', afterSeq: 2, action: 'send_email', target: 't', revision: 1, draft: { subject: 'S', body: 'B' } },
+      {
+        kind: 'approve',
+        afterSeq: 2,
+        action: 'send_email',
+        target: 't',
+        effectClass: 'irreversible',
+        revision: 1,
+        draft: { subject: 'S', body: 'B' },
+      },
     ])
     expect(pendingCommand(drafting())).toBeNull()
   })

@@ -63,10 +63,11 @@ export function EventLog() {
           {copy === 'copied' ? 'Copied' : copy === 'failed' ? 'Copy failed' : 'Copy JSON'}
         </Button>
       </div>
-      <div className="h-56 overflow-auto rounded-md border">
+      {/* A debug view: every event at full height, the page scrolls. */}
+      <div className="rounded-md border">
         {/* Fixed layout with set column widths, so a long payload truncates instead of widening the table. */}
         <table className="w-full table-fixed font-mono text-xs">
-          <thead className="bg-muted text-muted-foreground sticky top-0 text-left font-sans font-semibold">
+          <thead className="bg-muted text-muted-foreground text-left font-sans font-semibold">
             <tr className="[&>th]:px-3 [&>th]:py-2">
               <th className="w-12">#</th>
               <th className="w-20">seq</th>

@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
-import { TAGS, toneEdge } from '@/config/agentTags'
+import { TAGS, actionLabels, toneEdge } from '@/config/agentTags'
 import type { AgentModel } from '@/store/console.reducer'
 import { useConsoleStore } from '@/store/console.store'
 import { useShownDecision, useVisibleOutcome } from '@/store/hooks'
 import { pendingCommand, phaseOf, statusLineOf, waitingQueue } from '@/store/selectors'
 import { useViewStore, type Outcome } from '@/store/view.store'
+import { useClearOnNextAction } from '@/hooks/useClearOnNextAction'
 import { AgentRecord } from './AgentRecord'
 import { ConfirmationDecision, FailureDecision, Frame, QuestionDecision, type Act } from './DecisionViews'
 
@@ -33,14 +34,17 @@ function EmptyState() {
 /** What was sent: fixed once the mock accepted it. */
 function sentLine(outcome: Outcome): string {
   if (outcome.kind === 'approve') return 'Approved'
-  if (outcome.kind === 'edit') return 'Edited version sent'
+  if (outcome.kind === 'edit') return 'Edit submitted'
   if (outcome.kind === 'resolve') return `Answer sent: ${outcome.answer}`
   return `Retry sent: attempt ${outcome.attempt}`
 }
 
-/** Where the agent is now, from the model: its status line, verbatim. */
+/** Where the agent is now, from the model: its status line, verbatim. A submitted edit says what happens next. */
 function nowLine(agent: AgentModel): string {
-  if (pendingCommand(agent)) return 'Waiting for the agent to respond.'
+  const pending = pendingCommand(agent)
+  if (pending?.kind === 'edit' && agent.gate?.event.type === 'confirmation_required')
+    return actionLabels(agent.gate.event.action).editPending
+  if (pending) return 'Waiting for the agent to respond.'
   return statusLineOf(agent) ?? ''
 }
 
@@ -67,8 +71,12 @@ function OutcomeView({ outcome, onNext }: { outcome: Outcome; onNext: (id: strin
   return (
     <div className="flex flex-1 flex-col">
       <div ref={statusRef} tabIndex={-1} role="status" className="flex flex-1 flex-col outline-none">
-        <Frame band="done" who={agent.label} title={<span className="break-words">{sentLine(outcome)}</span>}>
-          <p className="text-muted-foreground truncate" title={now}>
+        <Frame
+          band={outcome.kind === 'edit' ? 'neutral' : 'done'}
+          who={agent.label}
+          title={<span className="break-words">{sentLine(outcome)}</span>}
+        >
+          <p className="text-muted-foreground line-clamp-2 h-[2lh]" title={now}>
             {now}
           </p>
         </Frame>
@@ -104,6 +112,8 @@ export function DecisionPanel() {
   const agent = useConsoleStore((state) => (shownId ? state.agents[shownId] : null))
   const focusRequest = useViewStore((state) => state.focusRequest)
   const [refusedId, setRefusedId] = useState<string | null>(null)
+  // Any next user action clears a refused-command message; the action itself may set it again.
+  useClearOnNextAction(refusedId !== null, () => setRefusedId(null))
   const recordRef = useRef<HTMLHeadingElement>(null)
   const decisionRef = useRef<HTMLDivElement>(null)
 
@@ -130,16 +140,14 @@ export function DecisionPanel() {
     return accepted
   }
 
-  const edgeTag = recordAgent?.tag ?? (outcome ? 'done' : agent?.tag)
-  const edge = edgeTag ? toneEdge(TAGS[edgeTag].tone) : 'border-l-border'
+  // A submitted edit is not a done action: neutral edge, like its band.
+  const edgeTag = recordAgent?.tag ?? (outcome ? (outcome.kind === 'edit' ? null : 'done') : agent?.tag)
+  const edge = edgeTag ? toneEdge(TAGS[edgeTag].tone) : 'border-l-input'
 
   return (
     <aside
       // The landmark is named after what it shows: the decisions, or the open record.
       aria-label={recordId ? 'Agent record' : 'Decisions waiting for you'}
-      // Any next user action in the panel clears a refused-command message; the action itself may set it again.
-      onClickCapture={() => setRefusedId(null)}
-      onChangeCapture={() => setRefusedId(null)}
       className={`bg-card shadow-raised flex min-h-[420px] flex-col overflow-hidden rounded-lg border border-l-[3px] ${edge}`}
     >
       {recordId ? (

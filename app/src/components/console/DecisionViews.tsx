@@ -25,6 +25,7 @@ const Row = ({ label, children }: { label: string; children: ReactNode }) => (
 const Refused = ({ show }: { show: boolean }) => (show ? <p className="text-failed text-sm">{REFUSED}</p> : null)
 
 const BAND = {
+  neutral: 'bg-muted border-border',
   needs: 'bg-needs border-needs-edge',
   failed: 'bg-failed-tint border-failed text-failed',
   done: 'bg-done-tint border-done text-done-ink',
@@ -246,7 +247,8 @@ export function QuestionDecision({ agent, gate, refused, act }: { agent: AgentMo
 
   const send = () => {
     const choice = usesWords ? { words: words.trim() } : { optionId: optionId! }
-    act(agent.id, () => resolve(agent.id, choice), { kind: 'resolve', answer: text! })
+    // An accepted answer belongs to this question only: a later question from the same agent starts empty.
+    if (act(agent.id, () => resolve(agent.id, choice), { kind: 'resolve', answer: text! })) setAnswer(agent.id, null)
   }
 
   return (

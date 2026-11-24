@@ -87,6 +87,7 @@ describe('agent record', () => {
     expect(panel().getByText('maya@example.test')).toBeTruthy()
     expect(panel().getByText('Hello')).toBeTruthy()
     expect(panel().getByText('Body text')).toBeTruthy()
+    expect(panel().getByText('Irreversible: cannot be undone once it happens')).toBeTruthy()
   })
 
   it('puts the result that arrives later below what the user did', () => {
@@ -144,6 +145,16 @@ describe('back to decisions', () => {
     status('research', 'running', { attempt: 2 })
     openCard('research')
     expect(panel().getByRole('button', { name: 'Back to decisions' })).toBeTruthy()
+  })
+})
+
+describe('selected card', () => {
+  it('marks the link of the card the panel is about with aria-current', () => {
+    setup()
+    openCard('drafting')
+    const link = (id: string) => within(screen.getByTestId(`agent-card-${id}`)).getByRole('button', { name: /in the panel/ })
+    expect(link('drafting').getAttribute('aria-current')).toBe('true')
+    expect(link('research').getAttribute('aria-current')).toBeNull()
   })
 })
 

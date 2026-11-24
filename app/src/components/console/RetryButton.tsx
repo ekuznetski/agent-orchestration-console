@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useClearOnNextAction } from '@/hooks/useClearOnNextAction'
 import { Button } from '@/components/ui/button'
 import { useConsoleStore } from '@/store/console.store'
 import { shownDecisionNow } from '@/store/hooks'
@@ -12,6 +13,7 @@ export const REFUSED = 'The agent did not accept this action'
  * another agent's open decision. */
 export function RetryButton({ agentId, label = 'Retry' }: { agentId: string; label?: string }) {
   const [refused, setRefused] = useState(false)
+  useClearOnNextAction(refused, () => setRefused(false))
 
   const onClick = () => {
     const state = useConsoleStore.getState()

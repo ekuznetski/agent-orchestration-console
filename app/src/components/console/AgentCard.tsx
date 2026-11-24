@@ -6,6 +6,7 @@ import { useAgent, useIsShown } from '@/store/hooks'
 import { statusLineOf, waitingQueue } from '@/store/selectors'
 import { useViewStore } from '@/store/view.store'
 import { AgentTrace } from './AgentTrace'
+import { Spinner } from '@/components/ui/spinner'
 import { StatusBadge } from './StatusBadge'
 
 /** One agent: label, state badge, one status line, its trace on demand. Clicking the card opens its decision. */
@@ -68,7 +69,8 @@ export function AgentCard({ id }: { id: string }) {
         <button
           type="button"
           className={linkButton}
-          aria-pressed={shown}
+          // Navigation to what the panel shows, not a toggle: the selected card's link is the current one.
+          aria-current={shown ? 'true' : undefined}
           onClick={(e) => {
             e.stopPropagation()
             openInPanel()
@@ -95,7 +97,16 @@ export function AgentList() {
           ))}
         </div>
       ) : (
-        <p className="text-muted-foreground">{cancelled ? 'The run was cancelled before the plan arrived.' : 'Planning...'}</p>
+        <p className="text-muted-foreground inline-flex items-center gap-1.5">
+          {cancelled ? (
+            'The run was cancelled before the plan arrived.'
+          ) : (
+            <>
+              <Spinner />
+              Planning...
+            </>
+          )}
+        </p>
       )}
     </div>
   )

@@ -11,7 +11,7 @@ import type {
 
 /** What a command actually sent, recorded only when the handler returned true. */
 export type Sent =
-  | { kind: 'approve'; action: string; target: string; revision: number; draft: Draft }
+  | { kind: 'approve'; action: string; target: string; effectClass: string; revision: number; draft: Draft }
   | { kind: 'edit'; draft: Draft }
   /** The picked option (optionId and its label), or the typed words as the label. */
   | { kind: 'resolve'; optionId?: string; label: string }

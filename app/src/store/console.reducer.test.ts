@@ -226,10 +226,22 @@ describe('commands and the edit seam', () => {
     const state = run([plan([{ id: 'd', type: 'drafting' }]), status('d', 'running'), confirmation('d')])
     const sent = reduce(
       state,
-      { type: 'command_sent', agentId: 'd', kind: 'approve', afterSeq: 3, action: 'send_email', target: 't', revision: 1, draft: {} },
+      {
+        type: 'command_sent',
+        agentId: 'd',
+        kind: 'approve',
+        afterSeq: 3,
+        action: 'send_email',
+        target: 't',
+        effectClass: 'irreversible',
+        revision: 1,
+        draft: {},
+      },
       1000,
     )
-    expect(sent.agents.d.actions).toEqual([{ kind: 'approve', afterSeq: 3, action: 'send_email', target: 't', revision: 1, draft: {} }])
+    expect(sent.agents.d.actions).toEqual([
+      { kind: 'approve', afterSeq: 3, action: 'send_email', target: 't', effectClass: 'irreversible', revision: 1, draft: {} },
+    ])
     expect(sent.agents.d.tag).toBe('needs_approval')
   })
 

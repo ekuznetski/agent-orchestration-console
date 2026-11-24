@@ -73,10 +73,11 @@ This protocol applies when ending a Beads implementation workflow. It is subordi
 ```bash
 cd app
 pnpm install
-pnpm dev       # http://localhost:5173 (any free port; e2e uses 5297)
+pnpm dev       # http://localhost:5173 (any free port; e2e uses its own, 5298)
 pnpm build     # tsc -b and vite build
 pnpm test      # Vitest unit and component tests
 pnpm lint      # oxlint
 pnpm format    # prettier --write src e2e *.ts
-pnpm e2e       # Playwright, starts the dev server on 5297
+pnpm e2e       # Playwright without jitter; starts its own dev server on 5298 (E2E_PORT)
+pnpm e2e:jitter  # the same suite with the mock's timing jitter
 ```

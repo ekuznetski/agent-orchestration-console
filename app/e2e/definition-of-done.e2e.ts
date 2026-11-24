@@ -79,7 +79,7 @@ test('4. a confirmation does not fire until approved; Edit forces a fresh approv
   await panel(page).getByLabel('Subject').fill('Edited in the e2e test')
   await panel(page).getByRole('button', { name: 'Save changes' }).click()
   await expect(panel(page).getByRole('status')).toHaveText(
-    'Draft a follow-up to Maya ChenEdited version sentWaiting for the agent to respond.',
+    'Draft a follow-up to Maya ChenEdit submittedThe agent prepares the edited email; you approve it next.',
   )
   await expect(panel(page).getByRole('button', { name: 'Approve and send' })).toHaveCount(0)
   await panel(page).getByRole('button', { name: 'Next decision: Draft a follow-up to Maya Chen' }).click({ timeout: 15_000 })
@@ -121,6 +121,14 @@ test('6. a failed agent shows its error and a retry; the result is separate and 
 
   const result = page.getByRole('region', { name: 'Result' })
   await expect(result.getByRole('heading', { name: 'Complete' })).toBeVisible()
+  // Every agent ends Done; Scheduling's last step (seq 29) arrives after its done (seq 30) and takes its place in
+  // the trace without flipping the agent back.
+  await expect(page.getByTestId('agent-badge')).toHaveText(['Done', 'Done', 'Done'])
+  const scheduling = card(page, 'scheduling')
+  await scheduling.getByRole('button', { name: 'Show steps (4)' }).click()
+  await expect(scheduling.locator('li')).toHaveText([/Your calendar/, /free\/busy/, /You chose: Week of 9 Mar/, /Placed a 30-min hold/])
+  await expect(badge(page, 'scheduling')).toHaveText('Done')
+  await scheduling.getByRole('button', { name: 'Hide steps' }).click()
   const resultBox = await result.boundingBox()
   const firstCard = await card(page, 'research').boundingBox()
   expect(resultBox!.y + resultBox!.height).toBeLessThanOrEqual(firstCard!.y)
@@ -161,34 +169,38 @@ test('Cancel during a retry of a partial result keeps the partial result as it w
 
 test('Cancel run keeps the screen; Run again starts a fresh run', async ({ page, jitter }) => {
   await startRun(page, jitter)
+  // The debug row items keep their place across running, cancelled and running again.
+  const debugRow = () =>
+    page.evaluate(() =>
+      [...document.querySelectorAll('[aria-label="Mock speed"] button, [role="checkbox"]'), ...document.querySelectorAll('button')]
+        .filter((el) => el.getAttribute('role') === 'checkbox' || /x$|^Event log/.test(el.textContent!.trim()))
+        .map((el) => {
+          const r = el.getBoundingClientRect()
+          return `${r.left},${r.top + window.scrollY}`
+        }),
+    )
+  const running = await debugRow()
   await page.getByRole('button', { name: 'Cancel run' }).click()
+  expect(await debugRow()).toEqual(running)
   await expect(page.getByTestId('run-summary')).toContainText('Run cancelled')
   await expect(page.getByTestId(/^agent-card-/)).toHaveCount(3)
   await page.getByRole('button', { name: 'Run again' }).click()
   await expect(page.getByTestId('run-summary')).not.toContainText('Run cancelled')
   await expect(page.getByTestId(/^agent-card-/)).toHaveCount(3)
   await expect(page.getByTestId('agent-badge').filter({ hasText: 'Cancelled' })).toHaveCount(0)
+  expect(await debugRow()).toEqual(running)
 })
 
-test('the open event log keeps its height and its toggle its place while events stream', async ({ page, jitter }) => {
+test('the event log toggle keeps its place while events stream; the table does not widen', async ({ page, jitter }) => {
   await startRun(page, jitter)
   const toggle = page.getByRole('button', { name: /^Event log/ })
   await toggle.click()
-  const log = page.getByRole('region', { name: 'Event log' })
-  // Page coordinates: the page itself may scroll.
-  const pageBox = () =>
-    log.evaluate((el) => {
-      const r = el.getBoundingClientRect()
-      return { y: r.top + window.scrollY, height: r.height }
-    })
-  const first = await pageBox()
   const toggleX = (await toggle.boundingBox())!.x
   await expect(badge(page, 'drafting')).toHaveText('Needs approval')
   await retryResearch(page)
   await approveDrafting(page)
   await answerScheduling(page)
   await expect(page.getByRole('region', { name: 'Result' }).getByRole('heading', { name: 'Complete' })).toBeVisible()
-  expect(await pageBox()).toEqual(first)
   expect((await toggle.boundingBox())!.x).toBe(toggleX)
 
   // A long payload truncates instead of widening the table, also in a narrow window.

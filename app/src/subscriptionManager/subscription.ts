@@ -70,7 +70,7 @@ function send(agentId: string, call: (orc: MockOrchestrator) => boolean, sent: (
   return accepted
 }
 
-/** Approves the agent's open confirmation; records the approved action, target, revision and full draft. */
+/** Approves the agent's open confirmation; records the approved action, target, effect class, revision and full draft. */
 export const approve = (agentId: string) =>
   send(
     agentId,
@@ -78,7 +78,14 @@ export const approve = (agentId: string) =>
     (agent) => {
       const gate = agent.gate!
       const event = gate.event as ConfirmationRequiredEvent
-      return { kind: 'approve', action: event.action, target: event.target, revision: gate.revision, draft: event.draft }
+      return {
+        kind: 'approve',
+        action: event.action,
+        target: event.target,
+        effectClass: event.effectClass,
+        revision: gate.revision,
+        draft: event.draft,
+      }
     },
   )
 

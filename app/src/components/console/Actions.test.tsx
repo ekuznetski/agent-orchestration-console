@@ -139,13 +139,13 @@ describe('edit', () => {
     fireEvent.change(panel().getByLabelText('Message'), { target: { value: 'New body' } })
     click('Save changes')
     expect(fakeOrchestrator.edit).toHaveBeenCalledWith('drafting', { subject: 'New subject', body: 'New body' })
-    expect(outcome().textContent).toBe('Draft itEdited version sentWaiting for the agent to respond.')
+    expect(outcome().textContent).toBe('Draft itEdit submittedThe agent prepares the edited email; you approve it next.')
     expect(panel().getByRole('button', { name: 'Next decision: Research it' })).toBeTruthy()
 
     step('drafting')
-    expect(outcome().textContent).toBe('Draft itEdited version sentWaiting for the agent to respond.')
+    expect(outcome().textContent).toBe('Draft itEdit submittedThe agent prepares the edited email; you approve it next.')
     confirmation({ draft: { subject: 'New subject', body: 'New body' }, revision: 2 })
-    expect(within(outcome()).getByText('Edited version sent')).toBeTruthy()
+    expect(within(outcome()).getByText('Edit submitted')).toBeTruthy()
     click('Next decision: Draft it')
     expect(panel().getByText('Send the edited email?')).toBeTruthy()
     expect(panel().getByText('Edited version')).toBeTruthy()
@@ -181,6 +181,22 @@ describe('answer a question', () => {
     click('Send answer')
     expect(fakeOrchestrator.resolve).toHaveBeenCalledWith('scheduling', 'week_b')
     expect(panel().getByText('Answer sent: Week B')).toBeTruthy()
+  })
+
+  it('a second question from the same agent starts empty', () => {
+    setup()
+    openCard('scheduling')
+    fireEvent.click(panel().getByText('Week B'))
+    click('Send answer')
+    status('scheduling', 'running')
+    escalation()
+    click('Next decision: Schedule it')
+    expect((panel().getByRole('button', { name: 'Send answer' }) as HTMLButtonElement).disabled).toBe(true)
+    expect(
+      panel()
+        .getByRole('radio', { name: /Week B/ })
+        .getAttribute('aria-checked'),
+    ).toBe('false')
   })
 
   it('gives the answer back to the picked option when the typed words are cleared', () => {
@@ -246,6 +262,25 @@ describe('retry', () => {
 })
 
 describe('refused command', () => {
+  it('clears a refused Retry message from the result on the next action', () => {
+    setup()
+    status('drafting', 'done')
+    status('scheduling', 'done')
+    emit({
+      type: 'result',
+      seq: next(),
+      summary: 'Partial',
+      degraded: true,
+      items: [{ id: 'e', agentId: 'research', kind: 'error', title: 'Research failed', detail: 'jira timed out' }],
+    })
+    const result = within(screen.getByRole('region', { name: 'Result' }))
+    fakeOrchestrator.retry.mockReturnValueOnce(false)
+    fireEvent.click(result.getByRole('button', { name: 'Retry agent' }))
+    expect(result.getByText('The agent did not accept this action')).toBeTruthy()
+    fireEvent.click(screen.getByTestId('agent-card-drafting'))
+    expect(result.queryByText('The agent did not accept this action')).toBeNull()
+  })
+
   it('shows a message when the agent does not accept the command and clears it on the next action', () => {
     setup()
     openCard('drafting')

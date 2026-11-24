@@ -10,6 +10,7 @@ import type { Phase } from '@/store/selectors'
 import { useViewStore } from '@/store/view.store'
 import { cancel, start } from '@/subscriptionManager/subscription'
 import { EventLog } from './EventLog'
+import { Spinner } from '@/components/ui/spinner'
 import { StatusBadge } from './StatusBadge'
 
 const SPEEDS = [0.25, 0.5, 1, 2, 4]
@@ -118,6 +119,7 @@ export function StartCard() {
           <div className="mt-4 flex items-center justify-end gap-4">
             {refused && <span className="text-failed text-sm">The orchestrator did not start the run.</span>}
             <Button className="h-10 px-6" onClick={run} disabled={starting || request.trim() === ''}>
+              {starting && <Spinner />}
               {starting ? 'Starting...' : 'Start run'}
             </Button>
           </div>
@@ -138,17 +140,19 @@ const clock = (ms: number) => {
   return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`
 }
 
-/** Time since the plan arrived: ticking while the run works, frozen when it ends ("took", or "at" for a cancel). */
-function Elapsed({ startedAt, phase }: { startedAt: number; phase: Phase }) {
+/** Run time from the plan: it runs only while the run works (a Retry after a partial result reopens it), so the
+ * time the user spends between a settled run and a Retry is not counted. "took" once ended, "at" for a cancel. */
+function Elapsed({ phase }: { phase: Phase }) {
+  const clockState = useViewStore((state) => state.clock)
   const active = isActive(phase)
   const [now, setNow] = useState(() => Date.now())
-  // A working run ticks every second; an ended run mounts its own instance, so its first reading is the end.
   useEffect(() => {
-    if (!active) return
+    if (clockState.since === null) return
     const timer = setInterval(() => setNow(Date.now()), 1000)
     return () => clearInterval(timer)
-  }, [active])
-  const time = <b>{clock(now - startedAt)}</b>
+  }, [clockState.since])
+  const ms = clockState.total + (clockState.since === null ? 0 : Math.max(0, now - clockState.since))
+  const time = <b>{clock(ms)}</b>
   if (active) return <span className="mr-2">{time} into the run</span>
   if (phase === 'cancelled') return <span className="ml-2">at {time}</span>
   return <span className="ml-2">took {time}</span>
@@ -159,7 +163,13 @@ function PhaseWord({ phase }: { phase: Phase }) {
   if (phase === 'completed') return <StatusBadge tag="done" label={SUMMARY.completed} />
   if (phase === 'partial') return <StatusBadge tag="failed" label={SUMMARY.partial} />
   if (phase === 'cancelled') return <StatusBadge tag="cancelled" label={SUMMARY.cancelled} />
-  return <span>{SUMMARY[phase]}</span>
+  // Starting, running or finishing: the spinner says the run works even while no event has arrived yet.
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      <Spinner />
+      {SUMMARY[phase]}
+    </span>
+  )
 }
 
 /** Request, Cancel run / Run again, one-line summary, debug row and event log. */
@@ -172,6 +182,16 @@ export function TopBar() {
   const [logOpen, setLogOpen] = useState(false)
   const active = isActive(header.phase)
   const startedAt = useConsoleStore((state) => state.startedAt)
+  const clockRun = useViewStore((state) => state.clockRun)
+  const clockStop = useViewStore((state) => state.clockStop)
+
+  // The run clock follows the working spans: it opens at the plan, stops when the run ends, and an accepted Retry
+  // reopens it.
+  useEffect(() => {
+    if (startedAt === null) return
+    if (active) clockRun(useViewStore.getState().clock.total === 0 ? startedAt : Date.now())
+    else clockStop(Date.now())
+  }, [active, startedAt, clockRun, clockStop])
 
   return (
     <header className="bg-card shadow-raised flex flex-col overflow-hidden rounded-lg border">
@@ -207,23 +227,28 @@ export function TopBar() {
         className="text-muted-foreground [&_b]:text-foreground flex h-10 items-center gap-1.5 overflow-hidden border-t px-4 text-label whitespace-nowrap [&_b]:font-semibold [&_b]:tabular-nums"
         data-testid="run-summary"
       >
-        {startedAt !== null && active && <Elapsed startedAt={startedAt} phase={header.phase} />}
-        <PhaseWord phase={header.phase} />
-        {header.total > 0 && (
-          <span className={active ? undefined : 'ml-1.5'}>
-            {active && '- '}
-            <b>
-              {header.done} of {header.total}
-            </b>{' '}
-            done
-          </span>
-        )}
-        {startedAt !== null && !active && <Elapsed startedAt={startedAt} phase={header.phase} />}
-        {header.needYou > 0 && (
-          <span className="ml-2">
-            <b>{header.needYou}</b> {header.needYou === 1 ? 'needs' : 'need'} you
-          </span>
-        )}
+        {startedAt !== null && active && <Elapsed phase={header.phase} />}
+        {/* Announced politely when they change; the ticking clock stays outside the live regions. */}
+        <span aria-live="polite" className="contents">
+          <PhaseWord phase={header.phase} />
+          {header.total > 0 && (
+            <span className={active ? undefined : 'ml-1.5'}>
+              {active && '- '}
+              <b>
+                {header.done} of {header.total}
+              </b>{' '}
+              done
+            </span>
+          )}
+        </span>
+        {startedAt !== null && !active && <Elapsed phase={header.phase} />}
+        <span aria-live="polite" className="contents">
+          {header.needYou > 0 && (
+            <span className="ml-2">
+              <b>{header.needYou}</b> {header.needYou === 1 ? 'needs' : 'need'} you
+            </span>
+          )}
+        </span>
         {modelError && <span className="text-failed ml-2">The screen may not match what the agents did</span>}
         {active && <span className="text-faint ml-auto">The result appears above the agents when the run ends</span>}
       </div>

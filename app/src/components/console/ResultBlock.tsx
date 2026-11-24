@@ -1,27 +1,25 @@
 import { CircleCheck, CircleX, LoaderCircle } from 'lucide-react'
+import type { ResultEvent } from '@mock/orchestrator.js'
 import { Badge } from '@/components/ui/badge'
 import { resultKindLabel } from '@/config/agentTags'
 import { useConsoleStore } from '@/store/console.store'
-import { useWaitingQueue } from '@/store/hooks'
-import { isDegraded } from '@/store/selectors'
+import { canRetryFromResult, isDegraded, isRetryingFromResult } from '@/store/selectors'
 import { RetryButton } from './RetryButton'
 
 /** The latest aggregate, above the agents. A newer result replaces it in place; a status newer
  * than the result dims it as "Updating" until then. Texts are shown verbatim. */
 export function ResultBlock() {
   const result = useConsoleStore((state) => state.result)
-  const agents = useConsoleStore((state) => state.agents)
   const cancelled = useConsoleStore((state) => state.status === 'cancelled')
   const total = useConsoleStore((state) => state.plan?.order.length ?? 0)
-  const queue = useWaitingQueue()
+  // Primitives only, so an event for an agent outside the error items does not re-render the block.
+  const canRetry = useConsoleStore((state) =>
+    (state.result?.event.items ?? []).some((item) => item.kind === 'error' && canRetryFromResult(state, item.agentId)),
+  )
+  const anyRetrying = useConsoleStore((state) =>
+    (state.result?.event.items ?? []).some((item) => item.kind === 'error' && isRetryingFromResult(state, item.agentId)),
+  )
   if (!result) return null
-  const retryable = (agentId: string) => queue.includes(agentId) && agents[agentId].tag === 'failed'
-  // Retried and not failed again: the row keeps its place with "Retrying..." until a newer result replaces it.
-  // After a cancel nothing runs, so nothing is retrying.
-  const retrying = (agentId: string) => !cancelled && agents[agentId].actions.at(-1)?.kind === 'retry' && !retryable(agentId)
-  const errors = result.event.items.filter((item) => item.kind === 'error')
-  const canRetry = errors.some((item) => retryable(item.agentId))
-  const anyRetrying = errors.some((item) => retrying(item.agentId))
 
   const degraded = isDegraded(result.event)
   // A cancelled run will not update the result: it keeps its own heading, not "Updating".
@@ -65,37 +63,45 @@ export function ResultBlock() {
       </div>
       <ul className={`m-0 list-none px-4 pt-1 pb-3 ${updating ? 'opacity-60' : ''}`}>
         {result.event.items.map((item) => (
-          <li key={item.id} className="grid grid-cols-[7.5rem_minmax(0,1fr)] gap-x-4 border-t py-3 first:border-t-0">
-            <div className="flex flex-col">
-              <span className={`text-xs font-semibold ${item.kind === 'error' ? 'text-failed' : 'text-muted-foreground'}`}>
-                {resultKindLabel(item.kind)}
-              </span>
-              <span className="text-faint text-xs">{agents[item.agentId].label}</span>
-            </div>
-            <div className="flex flex-col text-sm">
-              <b className={`font-semibold ${item.kind === 'error' ? 'text-failed' : ''}`}>{item.title}</b>
-              <span>{item.detail}</span>
-              {item.sources && item.sources.length > 0 && (
-                <div className="mt-2 flex flex-wrap gap-1.5">
-                  {item.sources.map((source) => (
-                    <Badge key={source} variant="outline" className="bg-card text-muted-foreground">
-                      {source}
-                    </Badge>
-                  ))}
-                </div>
-              )}
-              {item.kind === 'error' && retryable(item.agentId) && (
-                <div className="pt-2">
-                  <RetryButton agentId={item.agentId} label="Retry agent" />
-                </div>
-              )}
-              {item.kind === 'error' && retrying(item.agentId) && (
-                <div className="text-muted-foreground flex h-11 items-center pt-2">Retrying...</div>
-              )}
-            </div>
-          </li>
+          <ResultItem key={item.id} item={item} />
         ))}
       </ul>
     </section>
+  )
+}
+
+/** One item of the result; it reads only its own agent. */
+function ResultItem({ item }: { item: ResultEvent['items'][number] }) {
+  const label = useConsoleStore((state) => state.agents[item.agentId].label)
+  const retryable = useConsoleStore((state) => item.kind === 'error' && canRetryFromResult(state, item.agentId))
+  const retrying = useConsoleStore((state) => item.kind === 'error' && isRetryingFromResult(state, item.agentId))
+  return (
+    <li className="grid grid-cols-[7.5rem_minmax(0,1fr)] gap-x-4 border-t py-3 first:border-t-0">
+      <div className="flex flex-col">
+        <span className={`text-xs font-semibold ${item.kind === 'error' ? 'text-failed' : 'text-muted-foreground'}`}>
+          {resultKindLabel(item.kind)}
+        </span>
+        <span className="text-faint text-xs">{label}</span>
+      </div>
+      <div className="flex flex-col text-sm">
+        <b className={`font-semibold ${item.kind === 'error' ? 'text-failed' : ''}`}>{item.title}</b>
+        <span>{item.detail}</span>
+        {item.sources && item.sources.length > 0 && (
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {item.sources.map((source) => (
+              <Badge key={source} variant="outline" className="bg-card text-muted-foreground">
+                {source}
+              </Badge>
+            ))}
+          </div>
+        )}
+        {retryable && (
+          <div className="pt-2">
+            <RetryButton agentId={item.agentId} label="Retry agent" />
+          </div>
+        )}
+        {retrying && <div className="text-muted-foreground flex h-11 items-center pt-2">Retrying...</div>}
+      </div>
+    </li>
   )
 }

@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { actionLabels, agentType, resultKindLabel } from '@/config/agentTags'
+import { actionLabels, agentType, effectClassLabel, resultKindLabel } from '@/config/agentTags'
 import type { Action } from '@/store/console.reducer'
 import { useAgent } from '@/store/hooks'
 import { useConsoleStore } from '@/store/console.store'
@@ -40,6 +40,11 @@ function ActionEntry({ action }: { action: Action }) {
         ))}
       </Fields>
       {body !== undefined && <div className="bg-muted rounded-md px-3.5 py-3 break-words whitespace-pre-wrap">{body}</div>}
+      {action.kind === 'approve' && (
+        <p className={`text-label font-semibold ${effectClassLabel(action.effectClass).tone === 'danger' ? 'text-failed' : ''}`}>
+          {effectClassLabel(action.effectClass).label}: {effectClassLabel(action.effectClass).note}
+        </p>
+      )}
     </div>
   )
 }
@@ -61,10 +66,10 @@ export function AgentRecord({ id }: { id: string }) {
         </div>
         <StatusBadge tag={agent.tag} />
       </div>
-      {/* One truncated line: a longer status must not push down what the user is reading. */}
+      {/* Two lines of fixed height: the full status shows, and a new one never pushes down what the user is reading. */}
       <div className="text-label grid grid-cols-[64px_minmax(0,1fr)] gap-x-3">
         <span className="text-muted-foreground">Status</span>
-        <span className="truncate" title={statusLineOf(agent) ?? undefined}>
+        <span className="line-clamp-2 h-[2lh]" title={statusLineOf(agent) ?? undefined}>
           {statusLineOf(agent) ?? 'No status yet'}
         </span>
       </div>

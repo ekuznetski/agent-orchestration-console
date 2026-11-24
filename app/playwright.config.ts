@@ -1,6 +1,10 @@
 import { defineConfig, devices } from '@playwright/test'
 import type { ConsoleOptions } from './e2e/fixtures.ts'
 
+// e2e always starts its own server from this checkout, on a port of its own (5298 unless E2E_PORT is set), so
+// it never tests whatever another checkout or a dev server happens to serve.
+const port = Number(process.env.E2E_PORT ?? 5298)
+
 // https://playwright.dev/docs/test-configuration
 export default defineConfig<ConsoleOptions>({
   testDir: './e2e',
@@ -11,17 +15,17 @@ export default defineConfig<ConsoleOptions>({
   workers: process.env.CI ? 1 : undefined,
   reporter: 'html',
   use: {
-    baseURL: 'http://localhost:5297',
+    baseURL: `http://localhost:${port}`,
     trace: 'on-first-retry',
   },
   projects: [
-    // The whole suite runs twice: without and with the mock's timing jitter.
+    // The suite without the mock's timing jitter (pnpm e2e) and with it (pnpm e2e:jitter).
     { name: 'chromium', use: { ...devices['Desktop Chrome'], jitter: false } },
     { name: 'chromium-jitter', use: { ...devices['Desktop Chrome'], jitter: true } },
   ],
   webServer: {
-    command: 'pnpm dev --port 5297 --strictPort',
-    url: 'http://localhost:5297',
-    reuseExistingServer: !process.env.CI,
+    command: `pnpm dev --port ${port} --strictPort`,
+    url: `http://localhost:${port}`,
+    reuseExistingServer: false,
   },
 })

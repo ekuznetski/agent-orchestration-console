@@ -9,6 +9,8 @@ export function isDegraded(result: ResultEvent): boolean {
 
 export function phaseOf(state: RunState): Phase {
   if (state.status === 'idle' || state.status === 'running' || state.status === 'cancelled') return state.status
+  // Settled, but a command (a Retry) is in flight: the run works again from the moment the mock accepted it.
+  if (state.plan?.order.some((id) => pendingCommand(state.agents[id]) !== null)) return 'running'
   if (!state.result || state.result.outdated) return 'finishing'
   return isDegraded(state.result.event) ? 'partial' : 'completed'
 }
@@ -109,13 +111,24 @@ export function traceOf(agent: AgentModel): TraceAttempt[] {
   return groups
 }
 
-/** The newest text by seq: the latest status line or the latest step detail.
- * A failed agent keeps its status line; a cancelled one shows its last status line. */
+/** The newest text by seq: the latest status line or the latest step detail. A failed agent keeps its status
+ * line; a cancelled one shows "Last status: " + that same newest text. */
 export function statusLineOf(agent: AgentModel): string | null {
   const status = agent.status
-  if (agent.tag === 'cancelled') return status ? `Last status: ${status.statusLine}` : null
-  if (status?.state === 'failed') return status.statusLine
+  if (status?.state === 'failed' && agent.tag !== 'cancelled') return status.statusLine
   const step = agent.steps.at(-1)
-  if (step && (!status || step.seq > status.seq)) return step.detail
-  return status?.statusLine ?? null
+  const newest = step && (!status || step.seq > status.seq) ? step.detail : (status?.statusLine ?? null)
+  if (agent.tag === 'cancelled') return newest === null ? null : `Last status: ${newest}`
+  return newest
+}
+
+/** The error item's agent can be retried from the result now: failed, in the waiting queue. */
+export function canRetryFromResult(state: RunState, agentId: string): boolean {
+  return state.agents[agentId].tag === 'failed' && waitingQueue(state).includes(agentId)
+}
+
+/** The error item's agent was retried and has not failed again: its row reads "Retrying..." until a newer result
+ * replaces the block. After a cancel nothing runs, so nothing is retrying. */
+export function isRetryingFromResult(state: RunState, agentId: string): boolean {
+  return state.status !== 'cancelled' && state.agents[agentId].actions.at(-1)?.kind === 'retry' && !canRetryFromResult(state, agentId)
 }

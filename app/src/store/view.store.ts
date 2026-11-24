@@ -31,6 +31,8 @@ export interface ViewStore {
   /** The agent whose record is open in agent mode. */
   recordId: string | null
   outcome: Outcome | null
+  /** Run time: `total` ms of finished working spans, plus the span open `since` a moment (ms), if any. */
+  clock: { total: number; since: number | null }
   /** Bumped by the user's moves in the panel (select, open a record, back); the panel then moves focus to what it shows. */
   focusRequest: number
   request: string
@@ -53,8 +55,13 @@ export interface ViewStore {
   setSpeed: (speed: number) => void
   setJitter: (jitter: boolean) => void
   setEdit: (agentId: string, entry: EditEntry | null) => void
-  setAnswer: (agentId: string, answer: Answer) => void
+  /** Stores a question's answer; null removes it (after the mock accepted it). */
+  setAnswer: (agentId: string, answer: Answer | null) => void
   runStarted: () => void
+  /** Opens a working span at `at`, unless one is open. */
+  clockRun: (at: number) => void
+  /** Closes the open working span at `at`. */
+  clockStop: (at: number) => void
   runRefused: () => void
   runCancelled: () => void
   runReset: () => void
@@ -65,6 +72,7 @@ const cleared = {
   selectedId: null,
   recordId: null,
   outcome: null,
+  clock: { total: 0, since: null },
   focusRequest: 0,
   startRefused: false,
   edits: {},
@@ -92,9 +100,18 @@ export const useViewStore = create<ViewStore>()((set) => ({
       else delete edits[agentId]
       return { edits }
     }),
-  setAnswer: (agentId, answer) => set((state) => ({ answers: { ...state.answers, [agentId]: answer } })),
+  setAnswer: (agentId, answer) =>
+    set((state) => {
+      const answers = { ...state.answers }
+      if (answer) answers[agentId] = answer
+      else delete answers[agentId]
+      return { answers }
+    }),
   runStarted: () => set((state) => ({ ...cleared, runs: state.runs + 1 })),
   runRefused: () => set({ ...cleared, runs: 0, startRefused: true }),
+  clockRun: (at) => set((state) => (state.clock.since === null ? { clock: { total: state.clock.total, since: at } } : {})),
+  clockStop: (at) =>
+    set((state) => (state.clock.since === null ? {} : { clock: { total: state.clock.total + at - state.clock.since, since: null } })),
   runCancelled: () => set({ outcome: null }),
   runReset: () => set({ ...cleared, runs: 0 }),
 }))

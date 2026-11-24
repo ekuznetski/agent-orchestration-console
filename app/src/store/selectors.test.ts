@@ -53,7 +53,7 @@ const escalation = (agentId: string) =>
   })
 // afterSeq is the newest seq so far, which is at least the agent's own maxSeq when the command is sent.
 const PAYLOAD = {
-  approve: { action: 'send_email', target: 't', revision: 1, draft: {} },
+  approve: { action: 'send_email', target: 't', effectClass: 'irreversible', revision: 1, draft: {} },
   edit: { draft: {} },
   resolve: { label: 'Answer' },
   retry: { attempt: 2 },
@@ -96,6 +96,16 @@ describe('runHeader and phaseOf', () => {
     )
     expect(phaseOf(partial)).toBe('partial')
     expect(phaseOf(run([{ type: 'run_cancelled' }], settled))).toBe('cancelled')
+  })
+
+  it('counts an accepted Retry after a partial result as running before the agent answers', () => {
+    const partial = run([
+      plan(['a']),
+      status('a', 'failed', { error: { code: 'x', message: 'm', retryable: true } }),
+      ev({ type: 'result', summary: 'S', items: [{ id: 'e', agentId: 'a', kind: 'error', title: 'T', detail: 'D' }] }),
+    ])
+    expect(phaseOf(partial)).toBe('partial')
+    expect(phaseOf(run([sent('a', 'retry')], partial))).toBe('running')
   })
 })
 
@@ -199,9 +209,12 @@ describe('statusLineOf', () => {
     expect(statusLineOf(run(upTo(29)).agents.agent_scheduling)).toBe('Hold placed \u2014 Tue 10 Mar, 14:00')
   })
 
-  it('keeps a failed status line and prefixes a cancelled one', () => {
+  it('keeps a failed status line; a cancelled one shows its newest text, step or status, after "Last status:"', () => {
     expect(statusLineOf(run(upTo(15)).agents.agent_research)).toBe('Failed \u2014 Jira fetch timed out after 3 attempts')
+    // Drafting's newest event before the cancel is a step (seq 14), newer than its running status (seq 7).
     const cancelled = run([...upTo(15), { type: 'run_cancelled' }]).agents.agent_drafting
-    expect(statusLineOf(cancelled)).toBe('Last status: Drafting the follow-up to Maya Chen…')
+    expect(statusLineOf(cancelled)).toBe('Last status: Tone: concise; lead with the security sign-off blocker')
+    const early = run([...upTo(7), { type: 'run_cancelled' }]).agents.agent_drafting
+    expect(statusLineOf(early)).toBe('Last status: Drafting the follow-up to Maya Chen…')
   })
 })
