@@ -1,3 +1,5 @@
+Candidate write-up: [app/README.md](app/README.md)
+
 # Challenge 1 — Agent Orchestration Console (starter repo)
 
 **You build the front end. Everything else is already here.**
