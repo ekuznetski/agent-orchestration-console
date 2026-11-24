@@ -1,6 +1,6 @@
 # Architecture
 
-How the console works, file by file. The contract is `README.md`, `mock/orchestrator.d.ts` and
+How the console works, file by file. The contract is `mock/README.md`, `mock/orchestrator.d.ts` and
 `fixtures/events.json`; the mock is imported unchanged through the Vite alias `@mock`.
 
 ## 1. Layers
@@ -51,11 +51,12 @@ What each call clears in the view store (request, speed and jitter always stay):
   refused start and after `cancel` the decision queue is empty, so no Approve, Edit, Send answer or Retry is
   rendered, and `send` has no guard for a missing orchestrator (`CancelledRun.test.tsx` checks the controls).
 - Commands: the mock returns `true` when it accepted a command, `false` when the agent was not in a state
-  that accepts it (README). Only an accepted command is recorded, as the local event `command_sent`, after
-  the handler returns. That relies on the README: the mock is "driven by `setTimeout`", so an agent's answer
+  that accepts it (mock/README.md). Only an accepted command is recorded, as the local event `command_sent`, after
+  the handler returns. That relies on `mock/README.md`: the mock is "driven by `setTimeout`", so an agent's answer
   never arrives inside the call. `afterSeq` is the agent's `maxSeq` read before the call. `command_sent` also
   carries what was actually sent (section 3, Actions), so the agent record can show it later. A command sent while the agent's previous command is still
-  pending does not reach the mock and returns `true` (it is already in flight), so it never reads as refused.
+  pending does not reach the mock and returns `true` (it is already in flight), so it never reads as refused
+  (deliberate exception 4 below).
   Components show "The agent did not accept this action" when a command is refused.
 
 ## 3. Run model: `reduce`
@@ -78,7 +79,7 @@ What each call clears in the view store (request, speed and jitter always stay):
 | Event | Handling |
 | --- | --- |
 | `run_reset` (local) | Back to `initialState`. |
-| `run_cancelled` (local) | Run status `cancelled`; every agent that is not `done` or `failed` becomes `cancelled`. |
+| `run_cancelled` (local) | Run status `cancelled`; every agent that is not `done` or `failed` becomes `cancelled`, and so does a failed agent whose accepted Retry it has not answered yet (it is working again). |
 | `command_sent` (local) | Appends the action to the agent's `actions`: `{ kind, afterSeq, ...what was sent }`; `afterSeq` is the agent's `maxSeq` read before the call. |
 | `plan` | Creates one `AgentModel` per subtask, in plan order; stores `task`, `order`, `startedAt`. |
 | `agent_status` | Kept only if its `seq` is newer than the stored status (a late `running` never overrides `done`). Updates attempts; a status newer than the latest result marks that result `outdated`. |
@@ -95,7 +96,7 @@ Every contract event is also appended to the raw `log` with `late: seq < highest
 
 ### Deliberate exceptions to the no-guards rule
 
-The project rule allows no guard without a contract line. These three are deliberate, each with its reason:
+The project rule allows no guard without a contract line. These four are deliberate, each with its reason:
 
 1. An unknown event type is logged (`console.warn`) and skipped in `reduce`, before the raw log, so it never
    reaches a handler. Reason: the event union in `mock/orchestrator.d.ts` is the set this console knows; a
@@ -106,6 +107,10 @@ The project rule allows no guard without a contract line. These three are delibe
    store for the rest of the run.
 3. The app error boundary (`AppErrorFallback`) with "Start over". Reason: a render bug must leave the user a
    way back to a working screen.
+4. `send` does not call the mock for a command while the agent's previous one is pending, and returns `true`.
+   Reason: a real contract case. After `edit()` the mock keeps the confirmation parked until it re-emits it, so
+   it would accept an `approve()` in that window and send the draft the user had just replaced; the same
+   guard stops a double click from sending twice.
 
 ### Agent tag (`tagOf`)
 
@@ -126,7 +131,8 @@ change it, so an agent stays "Needs approval" until its next event.
 
 `attempt` is optional in the contract. A status with `attempt` higher than the current one starts a new
 attempt; without it, `failed` followed by a non-failed status does. A `failed` status records
-`{ seq, message }` on the current attempt (`error.message`, or the status line when `error` is absent).
+`{ seq, message, status }` on the current attempt: `message` is `error.message`, or the status line when `error`
+is absent; `status` is the failed status event itself, for the failure row of the trace.
 
 ### Actions
 
@@ -137,14 +143,14 @@ actually sent, read when the handler returned `true` (a refused command records 
 | --- | --- |
 | `approve` | The approved gate's `action`, `target`, `effectClass`, `revision` and the full `draft`. |
 | `edit` | The sent `draft`. |
-| `resolve` | The picked option's `optionId` and `label`, or the typed `words`. |
+| `resolve` | The picked option's `optionId` and `label`, or, for typed words, only `label` (the words). |
 | `retry` | The `attempt` it started. |
 
 ### Gates and edits
 
 - A confirmation keeps `openedSeq`, the seq it first opened at, for its place in the queue.
 - A re-emitted confirmation is "the same gate, edited" only when the user's last command was an `edit`
-  sent after that gate (README: edit() "re-emits confirmation_required with revision + 1"); then it keeps
+  sent after that gate (mock/README.md: edit() "re-emits confirmation_required with revision + 1"); then it keeps
   `openedSeq`. Steps the agent reports between the edit and the re-emit do not change that.
 - `revision` is optional: without it the reducer counts revisions itself.
 
@@ -203,7 +209,7 @@ user's click switches the panel. Focus stays where the user put it. In practice:
   two lines (the card's status line stays one line, with the full text in its tooltip), and the slot keeps its height whether it holds the button or "Nothing else needs you right now."
 - There is no auto-advance and no Prev / Next: the user moves by the Next decision button or a card click.
 - The agent cards move in exactly two cases, both about the result block above them: when the first result
-  arrives (once per run), and when a newer result replaces it, which follows the user's Retry (README: retrying
+  arrives (once per run), and when a newer result replaces it, which follows the user's Retry (mock/README.md: retrying
   after a degraded result "re-opens aggregation and a fresh `result` supersedes it"). Before the replacement the
   block keeps its height ("Retrying..." rows, "Updating" dims in place). The e2e watch (`watchLayout`) checks
   this every frame in page coordinates (the page scrolls): a card move in any other frame, or the block going away,
@@ -260,8 +266,8 @@ Component-local state: open trace (`AgentCard`), open event log (`TopBar`), the 
   answer), red (`failed`, `failed-tint`) is failed, teal (`done`, `done-tint`, `done-ink`) is done; running,
   queued and cancelled are neutral. Badges are the shadcn `Badge` with one variant per state (`StatusBadge`): an
   icon and the label; the running icon spins unless reduced motion. While a command the mock accepted is on its
-  way (`isSent`: pending, not yet answered by the agent; for an edit, until the re-asked confirmation), the card
-  and record show a neutral "Sent" badge and the card's border turns neutral, matching the header count, which
+  way (`isWaitingForAgent`: pending, not yet answered by the agent; for an edit, until the re-asked confirmation), the card
+  and record show a neutral "Waiting for agent" badge and the card's border turns neutral, matching the header count, which
   already leaves the agent out; the model's tag and queue place stay as they are.
 - Loading: a spinner (`Spinner`, lucide LoaderCircle, fixed 14px, still under reduced motion) shows the run works
   before anything else moves: in the start button ("Starting...") and the run line ("Starting") from the click
@@ -272,7 +278,9 @@ Component-local state: open trace (`AgentCard`), open event log (`TopBar`), the 
 - Agent cards: all share the card surface and one even 2px border on all four sides, coloured only for needs
   you (bright amber `needs-bar`) and failed (`failed`); done, running, queued and cancelled have the neutral
   border. No top stripe. The selected card (its decision, outcome or record is in the panel) is raised
-  (`shadow-raised`) and joined to the panel by a connector in its state colour; no ring, no outline, no size or
+  (`shadow-raised`), steps 12px toward the panel (`translate-x-3`, a 150ms transform, none under reduced motion,
+  so no other box moves and the layout watch, which reads tops, is unaffected) and is joined to the panel by a
+  connector in its state colour across the rest of the gap; no ring, no outline, no size or
   border change. The trace is a numbered timeline (numbers run across attempts, a check icon per step on a teal
   line that turns red into the failure row, which shows its status line verbatim; "Attempt N" headers). Each row's text is clamped to two lines, with the full
   text in its tooltip, so a long free-text answer ("You chose: ...") cannot stretch the card; the text stays
@@ -298,7 +306,10 @@ Component-local state: open trace (`AgentCard`), open event log (`TopBar`), the 
   decision, Run again); secondary actions the outline variant. Colour belongs to bands, badges and the effect
   line, not to buttons.
 - Effect line: directly under the Approve / Edit buttons, normal size, semibold, with an alert icon:
-  irreversible in the failed red, reversible, read only and unknown classes in the normal text colour.
+  irreversible in the failed red, reading "Be careful, this action cannot be undone"; reversible ("You can undo
+  this action later") and read only ("This action changes nothing") in the normal text colour; an unknown class as
+  "<Class>: <note>" ("Side effect: the agent acts on your behalf"). The record of an approval keeps
+  "<Class>: <note>" ("Irreversible: cannot be undone once it happens"), a fact about a done action.
   Reason: the warning sits where the eye and the cursor are at the moment of clicking, not above the draft.
   Questions have no effect line.
 - Result: a band with an icon, the heading (Complete, Partial result, Updating, Run cancelled in a neutral band)
@@ -388,5 +399,6 @@ in `src/test/fakeOrchestrator.ts`. Only `mockAlias.test.ts` loads the real mock.
 | `AppErrorFallback.test.tsx` | A render error shows the fallback; Start over calls `reset` (a stub manager, not the real one) and renders again. |
 | `EventLog.test.tsx` | Copy JSON says "Copied" and returns to "Copy JSON" after 2 s; a refused clipboard says "Copy failed". |
 | `ResultRenders.test.tsx` | An event for an agent the result does not show does not re-render the result block (React Profiler). |
+| `CardRenders.test.tsx` | An event for one agent does not re-render another agent's card (React Profiler). |
 | `mockAlias.test.ts` | The `@mock` alias loads the real mock (the only unit test that touches it). |
 | `e2e/definition-of-done.e2e.ts` | Each Definition-of-done item from the task text in a real browser with the real mock at 4x (0.25x for the empty trace and the wait after Edit, so those states are asserted strictly), item 6 also checks that all three agents end Done and that Scheduling's late last step (seq 29 after its done, seq 30) sits in place in its trace; item 4 checks that the draft body is not clipped in the confirmation and in the record, and "not sent" only after the other agents have reached their own waits; plus agent cards keeping their position (every frame, `watchLayout`) while decisions open and close, moving only when the result first appears, a partial result retried from the result (every frame: the block stays, the cards move only when the newer result replaces it), Cancel during that retry, Cancel / Run again (the debug row items keep their place across running, cancelled and running again), the event log toggle keeping its place while events stream and the log table no wider than its box in an 800px window, form controls not grey-filled under a dark colour scheme. Every wait is on UI state. Two Playwright projects run the whole file without and with the mock's jitter, set through the UI: `pnpm e2e` runs the one without jitter (the default), `pnpm e2e:jitter` the one with it. The suite always starts its own dev server from this checkout on port 5298 (`E2E_PORT`), never reusing a running one. |

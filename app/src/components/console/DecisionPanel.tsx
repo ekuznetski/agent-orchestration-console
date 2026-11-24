@@ -4,7 +4,7 @@ import { TAGS, actionLabels, toneEdge } from '@/config/agentTags'
 import type { AgentModel } from '@/store/console.reducer'
 import { useConsoleStore } from '@/store/console.store'
 import { useShownDecision, useVisibleOutcome } from '@/store/hooks'
-import { isSent, pendingCommand, phaseOf, statusLineOf, waitingQueue } from '@/store/selectors'
+import { isWaitingForAgent, pendingCommand, phaseOf, statusLineOf, waitingQueue } from '@/store/selectors'
 import { useViewStore, type Outcome } from '@/store/view.store'
 import { useClearOnNextAction } from '@/hooks/useClearOnNextAction'
 import { AgentRecord } from './AgentRecord'
@@ -153,7 +153,7 @@ export function DecisionPanel() {
   // A submitted edit is not a done action: neutral edge, like its band.
   const edgeTag = recordAgent?.tag ?? (outcome ? (outcome.kind === 'edit' ? null : 'done') : agent?.tag)
   // A record of an agent whose command is on its way is neutral, like its card.
-  const edge = edgeTag && !(recordAgent && isSent(recordAgent)) ? toneEdge(TAGS[edgeTag].tone) : 'border-l-input'
+  const edge = edgeTag && !(recordAgent && isWaitingForAgent(recordAgent)) ? toneEdge(TAGS[edgeTag].tone) : 'border-l-input'
 
   return (
     <aside

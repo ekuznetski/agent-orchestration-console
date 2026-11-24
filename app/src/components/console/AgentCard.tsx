@@ -3,7 +3,7 @@ import { ChevronRight } from 'lucide-react'
 import { TAGS } from '@/config/agentTags'
 import { useConsoleStore } from '@/store/console.store'
 import { useAgent, useIsShown } from '@/store/hooks'
-import { isSent, statusLineOf, waitingQueue } from '@/store/selectors'
+import { isWaitingForAgent, statusLineOf, waitingQueue } from '@/store/selectors'
 import { useViewStore } from '@/store/view.store'
 import { AgentTrace } from './AgentTrace'
 import { Spinner } from '@/components/ui/spinner'
@@ -22,9 +22,9 @@ export function AgentCard({ id }: { id: string }) {
   const openInPanel = () => (inQueue ? select(id) : openRecord(id))
   const [open, setOpen] = useState(false)
 
-  const sent = isSent(agent)
+  const waiting = isWaitingForAgent(agent)
   // A sent command no longer needs the user: the card turns neutral until the agent answers.
-  const tone = sent ? 'neutral' : TAGS[agent.tag].tone
+  const tone = waiting ? 'neutral' : TAGS[agent.tag].tone
   // Colour means state only: amber needs you, red failed; every other card has the neutral edge.
   const edge = tone === 'attention' ? 'border-needs-bar' : tone === 'danger' ? 'border-failed' : 'border-border'
   const link = tone === 'attention' ? 'bg-needs-bar' : tone === 'danger' ? 'bg-failed' : 'bg-input'
@@ -41,13 +41,15 @@ export function AgentCard({ id }: { id: string }) {
       // so no interactive element is nested inside another.
       onClick={openInPanel}
       // One even 2px border for every state; selection only raises the card (shadow), so neither changes its size.
-      className={`relative flex min-w-0 cursor-pointer flex-col rounded-lg [overflow-wrap:anywhere] border-2 ${edge} bg-card ${shown ? 'shadow-raised' : ''}`}
+      className={`relative flex min-w-0 cursor-pointer flex-col rounded-lg [overflow-wrap:anywhere] border-2 ${edge} bg-card transition-transform duration-150 motion-reduce:transition-none ${shown ? 'shadow-raised translate-x-3' : ''}`}
     >
-      {shown && <span aria-hidden="true" className={`absolute top-1/2 -right-6.5 h-[3px] w-6 -translate-y-1/2 ${link}`} />}
+      {/* Selected: the card steps 12px toward the panel (a transform, so nothing else moves) and the connector
+          bridges the rest of the 24px gap. */}
+      {shown && <span aria-hidden="true" className={`absolute top-1/2 -right-3.5 h-[3px] w-3 -translate-y-1/2 ${link}`} />}
       <div className="grid grid-cols-[minmax(0,1fr)_8rem] items-start gap-x-3 gap-y-0.5 px-4 pt-3 pb-2">
         <ClampedText text={agent.label} lines={1} className="text-title font-semibold" />
         <div className="row-span-2 justify-self-end">
-          <StatusBadge tag={agent.tag} sent={sent} testId="agent-badge" />
+          <StatusBadge tag={agent.tag} waiting={waiting} testId="agent-badge" />
         </div>
         <ClampedText
           text={line}

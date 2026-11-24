@@ -194,6 +194,17 @@ describe('cancel', () => {
     expect(state.agents.agent_scheduling.tag).toBe('cancelled')
   })
 
+  it('cancels a failed agent whose accepted Retry it has not answered yet', () => {
+    const before = run(upTo(15))
+    const afterSeq = before.agents.agent_research.maxSeq
+    const state = run([
+      ...upTo(15),
+      { type: 'command_sent', agentId: 'agent_research', afterSeq, kind: 'retry', attempt: 2 },
+      { type: 'run_cancelled' },
+    ])
+    expect(state.agents.agent_research.tag).toBe('cancelled')
+  })
+
   it('run_reset goes back to the initial state', () => {
     expect(run([...upTo(15), { type: 'run_reset' }])).toEqual(initialState)
   })

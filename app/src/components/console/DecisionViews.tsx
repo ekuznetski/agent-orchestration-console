@@ -69,7 +69,7 @@ function EffectLine({ effectClass }: { effectClass: string }) {
   return (
     <p className={`flex items-center gap-1.5 text-sm font-semibold ${effect.tone === 'danger' ? 'text-failed' : 'text-foreground'}`}>
       <CircleAlert aria-hidden="true" className="size-4 shrink-0" />
-      {effect.label}: {effect.note}
+      {effect.warning ?? `${effect.label}: ${effect.note}`}
     </p>
   )
 }

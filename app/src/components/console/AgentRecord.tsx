@@ -3,7 +3,7 @@ import { actionLabels, agentType, effectClassLabel, resultKindLabel } from '@/co
 import type { Action } from '@/store/console.reducer'
 import { useAgent } from '@/store/hooks'
 import { useConsoleStore } from '@/store/console.store'
-import { isSent, statusLineOf } from '@/store/selectors'
+import { isWaitingForAgent, statusLineOf } from '@/store/selectors'
 import { StatusBadge } from './StatusBadge'
 import { ClampedText } from './ClampedText'
 
@@ -66,7 +66,7 @@ export function AgentRecord({ id }: { id: string }) {
           <div className="text-muted-foreground text-xs font-semibold">{agentType(agent.type).name}</div>
           <ClampedText text={agent.label} lines={1} className="text-title font-semibold" />
         </div>
-        <StatusBadge tag={agent.tag} sent={isSent(agent)} />
+        <StatusBadge tag={agent.tag} waiting={isWaitingForAgent(agent)} />
       </div>
       {/* Two lines of fixed height: the full status shows, and a new one never pushes down what the user is reading. */}
       <div className="text-label grid grid-cols-[64px_minmax(0,1fr)] gap-x-3">

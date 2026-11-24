@@ -156,6 +156,13 @@ describe('selected card', () => {
     expect(link('drafting').getAttribute('aria-current')).toBe('true')
     expect(link('research').getAttribute('aria-current')).toBeNull()
   })
+
+  it('steps the selected card toward the panel with a transform only', () => {
+    setup()
+    openCard('drafting')
+    expect(screen.getByTestId('agent-card-drafting').className).toContain('translate-x-3')
+    expect(screen.getByTestId('agent-card-research').className).not.toContain('translate-x-3')
+  })
 })
 
 describe('panel landmark', () => {

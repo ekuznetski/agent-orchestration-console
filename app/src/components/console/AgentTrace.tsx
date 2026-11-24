@@ -51,7 +51,7 @@ export function AgentTrace({ agent }: { agent: AgentModel }) {
 
   if (agent.steps.length === 0 && attempts.every((attempt) => attempt.rows.length === 0)) {
     return (
-      <div className="mx-3 mt-1 mb-3">
+      <div className="mx-3 mt-1 mb-3" data-testid="agent-trace">
         <p className="text-muted-foreground m-0 px-3 py-3.5 text-label leading-[19px]">
           No steps yet. Steps appear here as the agent reports them.
         </p>
@@ -89,6 +89,7 @@ export function AgentTrace({ agent }: { agent: AgentModel }) {
         atBottom.current = el.scrollTop + el.clientHeight >= el.scrollHeight - 4
       }}
       className="mx-3 mt-1 mb-3 max-h-[400px] overflow-y-auto rounded-md"
+      data-testid="agent-trace"
     >
       {groups.map((group) => (
         <div key={group.n}>

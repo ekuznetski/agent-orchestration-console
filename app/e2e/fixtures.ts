@@ -52,30 +52,46 @@ type Watch = { cards: string[]; versions: number[]; violations: string[] }
 /** Watches every frame from now on, in page coordinates (the page scrolls). The agent cards may move only in a frame where the result block appears
  * or is replaced by a newer result (its `data-version` changes); any other card move, and a result block that
  * goes away once shown, is a violation. */
-export async function watchLayout(page: Page) {
-  await page.evaluate(() => {
+/** Starts a per-frame watch of the agent cards. With `traceOf` (a card's test id whose trace the user opened),
+ * cards below that card may move in a frame where its trace grew and was still under its 400px cap. */
+export async function watchLayout(page: Page, traceOf?: string) {
+  await page.evaluate((traceOf) => {
     const watch: Watch = { cards: [], versions: [], violations: [] }
     ;(window as unknown as { watch: Watch }).watch = watch
-    let tops = ''
+    let tops: number[] = []
+    let ids: string[] = []
     let version: number | null = null
+    let traceHeight: number | null = null
     const tick = () => {
       const block = document.querySelector<HTMLElement>('[aria-label="Result"]')
       const now = block ? Number(block.dataset.version) : 0
       const cards = [...document.querySelectorAll<HTMLElement>('[data-testid^="agent-card-"]')]
-      const at = cards.map((el) => `${el.dataset.testid}@${el.getBoundingClientRect().top + window.scrollY}`).join(' ')
+      const at = cards.map((el) => el.getBoundingClientRect().top + window.scrollY)
+      const trace = traceOf ? document.querySelector<HTMLElement>(`[data-testid="${traceOf}"] [data-testid="agent-trace"]`) : null
+      const height = trace ? trace.getBoundingClientRect().height : null
       watch.cards = cards.map((el) => el.dataset.testid!)
       if (version === null) {
         // first frame: the starting point
       } else if (now !== version) {
         if (now === 0) watch.violations.push(`result block removed after version ${version}`)
         else watch.versions.push(now)
-      } else if (tops && at !== tops) watch.violations.push(`cards moved: ${tops} -> ${at}`)
+      } else if (tops.length && at.some((top, i) => top !== tops[i])) {
+        const grew = height !== null && traceHeight !== null && height > traceHeight && traceHeight < 400
+        const below = cards.findIndex((el) => el.dataset.testid === traceOf)
+        const allowed = grew && at.every((top, i) => top === tops[i] || i > below)
+        if (!allowed) {
+          const line = (list: number[]) => list.map((top, i) => `${ids[i]}@${top}`).join(' ')
+          watch.violations.push(`cards moved: ${line(tops)} -> ${line(at)} (trace ${traceHeight} -> ${height})`)
+        }
+      }
       tops = at
+      ids = watch.cards
       version = now
+      traceHeight = height
       requestAnimationFrame(tick)
     }
     tick()
-  })
+  }, traceOf)
 }
 
 /** What the watch saw, read after two more frames so the frame that shows the latest DOM change is counted. */

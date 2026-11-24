@@ -87,11 +87,23 @@ const RESULT_KINDS: Record<string, string> = {
 
 export const resultKindLabel = (kind: string): string => RESULT_KINDS[kind] ?? 'Result'
 
-const EFFECT_CLASSES: Record<string, { label: string; note: string; tone: Tone }> = {
-  irreversible: { label: 'Irreversible', note: 'cannot be undone once it happens', tone: 'danger' },
-  reversible: { label: 'Reversible', note: 'can be undone afterwards', tone: 'neutral' },
-  read_only: { label: 'Read only', note: 'changes nothing', tone: 'neutral' },
+// `warning` is the full sentence under Approve / Edit; an unknown class shows "label: note" there, and the record
+// of an approval keeps label and note.
+const EFFECT_CLASSES: Record<string, { label: string; note: string; tone: Tone; warning?: string }> = {
+  irreversible: {
+    label: 'Irreversible',
+    note: 'cannot be undone once it happens',
+    tone: 'danger',
+    warning: 'Be careful, this action cannot be undone',
+  },
+  reversible: { label: 'Reversible', note: 'can be undone afterwards', tone: 'neutral', warning: 'You can undo this action later' },
+  read_only: { label: 'Read only', note: 'changes nothing', tone: 'neutral', warning: 'This action changes nothing' },
 }
 
 export const effectClassLabel = (effectClass: string) =>
-  EFFECT_CLASSES[effectClass] ?? { label: 'Side effect', note: 'the agent acts on your behalf', tone: 'attention' as Tone }
+  EFFECT_CLASSES[effectClass] ?? {
+    label: 'Side effect',
+    note: 'the agent acts on your behalf',
+    tone: 'attention' as Tone,
+    warning: undefined,
+  }

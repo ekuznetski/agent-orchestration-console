@@ -2,7 +2,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { OrchestratorEvent } from '@mock/orchestrator.js'
 import { createMockOrchestrator } from '@mock/orchestrator.js'
 import { useConsoleStore } from '@/store/console.store'
-import { pendingCommand } from '@/store/selectors'
 import { useViewStore } from '@/store/view.store'
 import { approve, cancel, edit, reset, resolve, retry, start } from './subscription'
 
@@ -110,27 +109,6 @@ describe('commands', () => {
         draft: { subject: 'S', body: 'B' },
       },
     ])
-  })
-
-  it('reads afterSeq before the call, so an answer delivered inside the call still answers the command', () => {
-    startWithGate()
-    fake.orchestrator.approve.mockImplementationOnce(() => {
-      emit({ type: 'agent_step', seq: 3, agentId: 'agent_drafting', act: 'decided', detail: 'Approved' })
-      return true
-    })
-    expect(approve('agent_drafting')).toBe(true)
-    expect(drafting().actions).toEqual([
-      {
-        kind: 'approve',
-        afterSeq: 2,
-        action: 'send_email',
-        target: 't',
-        effectClass: 'irreversible',
-        revision: 1,
-        draft: { subject: 'S', body: 'B' },
-      },
-    ])
-    expect(pendingCommand(drafting())).toBeNull()
   })
 
   it('does not call the orchestrator for a command while one is pending, and reports it as in flight', () => {

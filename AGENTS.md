@@ -25,7 +25,7 @@ bd dolt push          # Push beads data to remote
 
 ## Project rules
 
-- What can happen at runtime comes only from `README.md`, `mock/orchestrator.d.ts` and `fixtures/events.json`. Never read `mock/orchestrator.js` to decide behaviour: it stands in for a real backend.
+- What can happen at runtime comes only from `mock/README.md`, `mock/orchestrator.d.ts` and `fixtures/events.json`. Never read `mock/orchestrator.js` to decide behaviour: it stands in for a real backend.
 - No guard, fallback, try/catch, buffer or retry without naming the contract line that makes the situation possible. Ruled out by the contract, never guarded: events before `plan`, events without `type` or `seq`, agents outside `plan.subtasks`, events of an old run after `reset()`. Out-of-order delivery is in the contract and is handled by ordering on `seq`. Allowed exceptions (see docs/architecture.md): try/catch around `reduce` so a reducer bug does not freeze the store, unknown event types logged and skipped, an app error boundary with "Start over".
 - Texts from the mock (`statusLine`, step `detail`, `question`, `context`, `options`, `draft`, `result`) are shown verbatim.
 - A layout shift caused by a streamed event is a bug; a shift the user causes (expand, click) is fine.

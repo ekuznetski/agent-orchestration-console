@@ -1,4 +1,4 @@
-import { Ban, Check, CircleDashed, LoaderCircle, Send, Triangle, X, type LucideIcon } from 'lucide-react'
+import { Ban, Check, CircleDashed, LoaderCircle, Hourglass, Triangle, X, type LucideIcon } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { TAGS } from '@/config/agentTags'
 import type { AgentTag } from '@/store/console.reducer'
@@ -17,16 +17,26 @@ const LOOK: Record<
   cancelled: { variant: 'cancelled', Icon: Ban },
 }
 
-const SENT = { variant: 'running', Icon: Send, iconClass: undefined } as const
+const WAITING = { variant: 'running', Icon: Hourglass, iconClass: undefined } as const
 
-/** The state badge of an agent, or of the run with its own words (`label`). `sent`: the user's command is on its
- * way (`isSent`), a neutral "Sent" in place of the need the agent no longer has. */
-export function StatusBadge({ tag, label, testId, sent = false }: { tag: AgentTag; label?: string; testId?: string; sent?: boolean }) {
-  const { variant, Icon, iconClass } = sent ? SENT : LOOK[tag]
+/** The state badge of an agent, or of the run with its own words (`label`). `waiting`: the user's command is on its
+ * way (`isWaitingForAgent`), a neutral "Waiting for agent" in place of the need the agent no longer has. */
+export function StatusBadge({
+  tag,
+  label,
+  testId,
+  waiting = false,
+}: {
+  tag: AgentTag
+  label?: string
+  testId?: string
+  waiting?: boolean
+}) {
+  const { variant, Icon, iconClass } = waiting ? WAITING : LOOK[tag]
   return (
     <Badge variant={variant} data-testid={testId} className="h-auto rounded-sm px-1.5 font-semibold">
       <Icon aria-hidden="true" className={iconClass} />
-      {sent ? 'Sent' : (label ?? TAGS[tag].label)}
+      {waiting ? 'Waiting for agent' : (label ?? TAGS[tag].label)}
     </Badge>
   )
 }

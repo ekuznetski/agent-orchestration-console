@@ -92,6 +92,7 @@ describe('approve', () => {
     openCard('drafting')
     expect(panel().getByText('Send this email?')).toBeTruthy()
     expect(panel().getByText('maya@example.test')).toBeTruthy()
+    expect(panel().getByText('Be careful, this action cannot be undone')).toBeTruthy()
     const button = panel().getByRole('button', { name: 'Approve and send' })
     fireEvent.click(button)
     expect(fakeOrchestrator.approve).toHaveBeenCalledTimes(1)
@@ -113,26 +114,26 @@ describe('approve', () => {
     expect(outcome().textContent).toBe('Draft itApproveddrafting done')
   })
 
-  it('the card badge says Sent while the command is on its way, then follows the agent', () => {
+  it('the card badge says Waiting for agent while the command is on its way, then follows the agent', () => {
     setup()
     const badge = () => within(screen.getByTestId('agent-card-drafting')).getByTestId('agent-badge')
     expect(badge().textContent).toBe('Needs approval')
     openCard('drafting')
     click('Approve and send')
-    expect(badge().textContent).toBe('Sent')
+    expect(badge().textContent).toBe('Waiting for agent')
     step('drafting')
     expect(badge().textContent).toBe('Running')
   })
 
-  it('a pending edit says Sent until the agent asks again', () => {
+  it('a pending edit says Waiting for agent until the agent asks again', () => {
     setup()
     const badge = () => within(screen.getByTestId('agent-card-drafting')).getByTestId('agent-badge')
     openCard('drafting')
     click('Edit email')
     click('Save changes')
-    expect(badge().textContent).toBe('Sent')
+    expect(badge().textContent).toBe('Waiting for agent')
     step('drafting')
-    expect(badge().textContent).toBe('Sent')
+    expect(badge().textContent).toBe('Waiting for agent')
     confirmation({ revision: 2 })
     expect(badge().textContent).toBe('Needs approval')
   })
@@ -175,6 +176,18 @@ describe('edit', () => {
     expect(panel().getByText('Edited version')).toBeTruthy()
     click('Approve and send')
     expect(fakeOrchestrator.approve).toHaveBeenCalledWith('drafting')
+  })
+
+  it('words each effect class as a sentence under the buttons; an unknown class as label: note', () => {
+    setup()
+    openCard('drafting')
+    expect(panel().getByText('Be careful, this action cannot be undone')).toBeTruthy()
+    confirmation({ effectClass: 'reversible' })
+    expect(panel().getByText('You can undo this action later')).toBeTruthy()
+    confirmation({ effectClass: 'read_only' })
+    expect(panel().getByText('This action changes nothing')).toBeTruthy()
+    confirmation({ effectClass: 'billing' })
+    expect(panel().getByText('Side effect: the agent acts on your behalf')).toBeTruthy()
   })
 
   it('labels an unknown action generically and shows every draft field', () => {

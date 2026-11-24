@@ -122,7 +122,7 @@ function putAgent(state: RunState, agent: AgentModel, seq: number): RunState {
   const stored = { ...agent, maxSeq: Math.max(agent.maxSeq, seq) }
   stored.tag = tagOf(stored)
   const agents = { ...state.agents, [stored.id]: stored }
-  // Agent events always follow the plan (README: plan is fired once, first).
+  // Agent events always follow the plan (mock/README.md: plan is fired once, first).
   const order = state.plan!.order
   const status: RunStatus = order.every((id) => isSettled(agents[id])) ? 'settled' : 'running'
   return { ...state, agents, status }
@@ -228,7 +228,10 @@ const handlers: Handlers = {
 function cancel(state: RunState): RunState {
   const agents: Record<string, AgentModel> = {}
   for (const [id, agent] of Object.entries(state.agents)) {
-    agents[id] = isSettled(agent) ? agent : { ...agent, tag: 'cancelled' }
+    // A failed agent with an accepted Retry it has not answered yet is working again: Cancel stops it too.
+    const last = agent.actions.at(-1)
+    const retrying = last?.kind === 'retry' && agent.maxSeq <= last.afterSeq
+    agents[id] = isSettled(agent) && !retrying ? agent : { ...agent, tag: 'cancelled' }
   }
   return { ...state, status: 'cancelled', agents }
 }
