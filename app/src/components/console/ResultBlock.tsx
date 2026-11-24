@@ -108,7 +108,8 @@ function ResultItem({ item }: { item: ResultEvent['items'][number] }) {
       <div className="flex items-start justify-between gap-4">
         <div className="flex min-w-0 flex-col text-sm leading-[21px]">
           <ClampedText text={item.title} lines={1} className={`font-semibold ${error ? 'text-failed' : ''}`} />
-          <span>{item.detail}</span>
+          {/* At most three lines: a detail can echo a long draft field; the full text is in the tooltip and the record. */}
+          <ClampedText text={item.detail} lines={3} />
           {item.sources && item.sources.length > 0 && (
             <div className="mt-2 flex flex-wrap gap-1.5">
               {item.sources.map((source) => (

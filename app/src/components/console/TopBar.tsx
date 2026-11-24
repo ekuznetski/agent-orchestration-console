@@ -48,7 +48,6 @@ function DebugRow({ locked, logOpen, onToggleLog }: { locked: boolean; logOpen?:
         size="sm"
         variant="outline"
         spacing={0}
-        className="rounded-md"
         disabled={locked}
         value={[String(speed)]}
         onValueChange={(value) => value[0] && setSpeed(Number(value[0]))}
@@ -57,7 +56,7 @@ function DebugRow({ locked, logOpen, onToggleLog }: { locked: boolean; logOpen?:
           <ToggleGroupItem
             key={s}
             value={String(s)}
-            className="border-input aria-pressed:bg-accent aria-pressed:text-foreground h-6 px-2 text-xs leading-5 tabular-nums first:rounded-l-md! last:rounded-r-md! aria-pressed:font-semibold"
+            className="border-input aria-pressed:bg-accent aria-pressed:text-foreground h-6 px-2 text-xs leading-5 tabular-nums aria-pressed:font-semibold"
           >
             {s}x
           </ToggleGroupItem>
@@ -75,8 +74,7 @@ function DebugRow({ locked, logOpen, onToggleLog }: { locked: boolean; logOpen?:
         <Button
           variant="link"
           size="xs"
-          // Arbitrary size, not the text-label token: cn's class merging does not know the token and drops it.
-          className="text-foreground decoration-input hover:decoration-foreground h-auto p-0 text-[13px] leading-[19px] underline underline-offset-[3px]"
+          className="text-foreground decoration-input hover:decoration-foreground h-auto p-0 text-label underline underline-offset-[3px]"
           aria-expanded={logOpen}
           onClick={onToggleLog}
         >

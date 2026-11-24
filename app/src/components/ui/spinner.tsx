@@ -1,5 +1,5 @@
 import { LoaderCircle } from 'lucide-react'
-import { cn } from 'cn'
+import { cn } from '@/lib/utils'
 
 /** A loading spinner (as shadcn's Spinner): fixed size, so it never changes layout; still under reduced motion.
  * `decorative` hides it from assistive tech where the words beside it already say it (inside a live region a

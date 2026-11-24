@@ -28,7 +28,8 @@ export function RetryButton({ agentId, label = 'Retry' }: { agentId: string; lab
 
   return (
     <div className="flex flex-col items-start gap-1">
-      <Button size="lg" onClick={onClick}>
+      {/* The second click of a double click (detail > 1) is ignored, like every command button in the panel. */}
+      <Button size="lg" onClick={(e) => e.detail <= 1 && onClick()}>
         {label}
       </Button>
       {refused && <span className="text-failed text-sm">{REFUSED}</span>}

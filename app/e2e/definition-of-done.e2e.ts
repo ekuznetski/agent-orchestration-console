@@ -177,6 +177,27 @@ test('a 200-character agent label and a 500-character unbroken answer overflow n
   expect(await noPageOverflow()).toBe(true)
 })
 
+test('a very long draft keeps Save reachable, and a long subject does not stretch the result', async ({ page, jitter }) => {
+  await startRun(page, jitter)
+  await expect(badge(page, 'drafting')).toHaveText('Needs approval')
+  await card(page, 'drafting').getByRole('button', { name: 'Decision in the panel' }).click()
+  await panel(page).getByRole('button', { name: 'Edit email' }).click()
+  // The editor caps the body at 320px with its own scroll, so Save stays on screen.
+  await panel(page).getByLabel('Message').fill('Long body. '.repeat(3100))
+  expect((await panel(page).getByLabel('Message').boundingBox())!.height).toBeLessThanOrEqual(320)
+  await panel(page).getByLabel('Message').fill('Short body.')
+  await panel(page).getByLabel('Subject').fill('Subject '.repeat(375))
+  await panel(page).getByRole('button', { name: 'Save changes' }).click()
+  await expect(panel(page).getByText('Send the edited email?')).toBeVisible()
+  await panel(page).getByRole('button', { name: 'Approve and send' }).click()
+  await retryResearch(page)
+  await answerScheduling(page)
+  const result = page.getByRole('region', { name: 'Result' })
+  await expect(result.getByRole('heading', { name: 'Complete' })).toBeVisible()
+  // The result item that echoes the subject is clamped to three lines.
+  expect((await result.boundingBox())!.height).toBeLessThan(700)
+})
+
 test('6. a failed agent shows its error and a retry; the result is separate and reads Complete', async ({ page, jitter }) => {
   await startRun(page, jitter)
   await expect(badge(page, 'research')).toHaveText('Failed')

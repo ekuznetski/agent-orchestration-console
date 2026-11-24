@@ -80,6 +80,14 @@ describe('cancel and run again', () => {
     expect(card('drafting').getByTestId('agent-badge').textContent).toBe('Cancelled')
   })
 
+  it('keeps focus in the slot: Cancel run becomes Run again under the same focus', () => {
+    setup()
+    const button = screen.getByRole('button', { name: 'Cancel run' })
+    button.focus()
+    fireEvent.click(button)
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Run again' }))
+  })
+
   it('an edit still waiting for the agent ends as Cancelled', () => {
     setup()
     fireEvent.click(panel().getByRole('button', { name: 'Edit email' }))

@@ -148,11 +148,12 @@ Two stores, because they change for different reasons and have different lifetim
   that line with state running one event before the confirmation; the event log shows the same raw event. The
   console does not correct the backend.
 - **After Save changes the panel waits, then opens the edited email by itself.** It shows "Edit submitted" with a
-  spinner while the agent prepares the edited email, and opens "Send the edited email?" when it arrives. This is
-  the one switch the panel makes on its own besides the empty panel: it is the direct answer to the user's own
-  Save, on the agent the panel already shows. Focus goes to the decision, not to Approve, and Approve ignores the
-  second click of a double click, so a double click on Save cannot send. If the user moved on before it arrived,
-  the Next decision button points to it instead.
+  spinner while the agent prepares the edited email, and opens "Send the edited email?" when it arrives. It is
+  one of the three switches the panel makes on its own (with the empty panel opening the first decision, and an
+  open record whose agent starts waiting): it is the direct answer to the user's own Save, on the agent the panel
+  already shows. Focus goes to the decision, not to Approve, and Approve ignores the second click of a double
+  click, so a double click on Save cannot send. If the user moved on before it arrived, the Next decision button
+  points to it instead.
 - **"Next decision: <agent>" can change its label while the user reads the outcome** (it pointed to Research,
   then to Draft when the edited confirmation arrived): it only navigates and takes no action, and the agent that
   asks again after the user's own action is the right next step.
@@ -163,7 +164,8 @@ Two stores, because they change for different reasons and have different lifetim
 - **Cancel run takes the place of Run again during a run, as in the design, and the debug controls are muted and
   locked**: a click that is the second of a double click (`detail > 1`) is ignored there, so a double click on
   Run again cannot cancel the run it just started. The mock takes speed and jitter only when it is created, so
-  they can be set only before a run.
+  they can be set only before a run. Only a true double click is guarded: two separate quick clicks on Run again
+  (slower than the system's double-click interval) still cancel the new run.
 
 ### What the console does not check, and why
 
@@ -265,7 +267,10 @@ Each item is an e2e test in `e2e/definition-of-done.e2e.ts` against the real moc
 Also covered: a partial result retried from its error item, Cancel during that retry, Cancel and Run again,
 layout stability every frame, and form controls under a dark system theme. Unit and component tests cover the
 reducer (late events, attempts, gates, revisions, result replacement), selectors, the subscription manager
-against a fake orchestrator, and every panel flow.
+against a fake orchestrator, and every panel flow (the panel matrix in `docs/architecture.md`). A seeded property
+test (`reduceOrder.property.test.ts`) delivers the recorded run in 300 random orders and checks that the model
+equals the one from seq order: traces sorted without duplicates, done never regressing, the open gate the newest,
+the waiting queue exactly the agents that need the user, the newest result with `outdated` computed correctly.
 
 ## 13. Time spent
 

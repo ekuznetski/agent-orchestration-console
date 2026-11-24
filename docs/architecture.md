@@ -85,7 +85,7 @@ What each call clears in the view store (request, speed and jitter always stay):
 | `agent_status` | Kept only if its `seq` is newer than the stored status (a late `running` never overrides `done`). Updates attempts; a status newer than the latest result marks that result `outdated`. |
 | `agent_step` | Inserted into `steps` by `seq`, so a late step lands in its place. |
 | `confirmation_required`, `escalation_required` | Stored as the agent's `gate` if newer than the current one. |
-| `result` | Replaces the stored result (version + 1) if newer than it. |
+| `result` | Replaces the stored result (version + 1) if newer than it; it is outdated on arrival when an agent's status with a higher seq came first. |
 
 Every contract event is also appended to the raw `log` with `late: seq < highest seq so far`.
 
@@ -206,8 +206,9 @@ user's click switches the panel. Focus stays where the user put it. In practice:
   empty panel ("Nothing needs you right now ... New decisions open here"): the first decision that arrives
   opens there, since nothing is being read. The second exception is the answer to the user's own Save: while
   the panel still shows that Save's outcome ("Edit submitted" with a spinner and "The agent is preparing the
-  edited email..."), the re-asked confirmation opens by itself, focused on the decision, not on Approve; Approve
-  and Edit ignore the second click of a double click (`detail > 1`), so a double click on Save cannot approve.
+  edited email..."), the re-asked confirmation opens by itself, focused on the decision, not on Approve; Every
+  command button in the panel (Approve, Edit, Save changes, Send answer, Retry) ignores the second click of a double
+  click (`detail > 1`), so a double click on Save, or on Next decision, cannot act on what opens under it.
   If the user moved away first (a card click or Next decision), there is no switch.
   The third: when the agent whose record is open starts waiting for the user (its confirmation or question
   arrives while the user reads its record), the panel opens that agent's decision, with the same focus and
@@ -237,6 +238,37 @@ user's click switches the panel. Focus stays where the user put it. In practice:
 
 Component-local state: open trace (`AgentCard`), open event log (`TopBar`), the refused-command text (in the panel and in `RetryButton`; `useClearOnNextAction` clears it on the user's next click or input anywhere, before that action's own handler runs).
 
+### Panel: what it shows x what happens
+
+Count = "K need you" (`waitingQueue`, without pending commands). Tests: A = `Actions.test.tsx`, R =
+`AgentRecord.test.tsx`, C = `CancelledRun.test.tsx`, E = `e2e/definition-of-done.e2e.ts`; "matrix" = the
+`panel matrix` group in A.
+
+| Panel shows | What happens | Panel / count / badges / focus | Test |
+| --- | --- | --- | --- |
+| empty | A starts waiting | A's decision opens (nothing is being read); count +1; focus untouched | A "stays where the user put it" |
+| empty | result arrives or is replaced; phase changes | text by phase ("The agents are done...", "The run is finished..."); moves down with a new result | matrix "names the phase" |
+| empty | click A's card (A not waiting) | A's record; focus on its heading | R |
+| decision of A | B starts waiting | stays on A; count +1; B's badge Needs | A "does not replace the decision on screen" |
+| decision or editor of A | A's gate closes without the user | the next open decision (or empty); an editor goes, its draft is kept | matrix (two tests) |
+| confirmation or question of A | A fails | A's failure view in place (same agent); badge Failed | matrix |
+| decision of A | click a card, Next decision | that agent's decision (or its record if it does not wait); focus on the decision group | A focus tests |
+| decision / editor / outcome | double click on any command button | the second click (`detail > 1`) is ignored: Approve, Edit, Save, Send answer, Retry | A, matrix; E DoD 4 |
+| editor of A | B starts waiting; switch away and back | editor stays; the typed text survives | A "keeps typed text" |
+| outcome of A, pending | A answers | second line changes in place; badge Waiting for agent, then A's tag | A "keeps the outcome while the agent answers" |
+| outcome of A | B starts waiting | outcome stays; footer offers B; count +1 | A "adds the button and leaves the outcome" |
+| outcome of A | A asks again (not an edit) | outcome stays; footer offers A first | matrix |
+| outcome of A | A fails | outcome stays; second line is the failure; footer offers A | matrix |
+| waiting after Save of A | A's edited confirmation arrives | opens by itself (exception 2); focus on the decision group | A; E DoD 4 |
+| waiting after Save of A | the user moved away first | no switch; Next decision points to A | A "does not switch ... moved away" |
+| waiting after Save of A | A fails or finishes instead of asking again | ruled out by the contract (`edit()` "re-emits `confirmation_required`"): not handled, the spinner would stay | none (by design) |
+| record of A (not waiting) | A starts waiting, also with a pending command | A's decision opens (exception 3); focus on the decision group | R; matrix |
+| record of A (already waiting, opened from the result) | none | stays a record; footer offers A | R |
+| record of A | B starts waiting; the result arrives | record stays; footer offers B; a result arriving goes below "What you did" | R |
+| any | Cancel run | outcome cleared, "The run was cancelled."; a record stays; unfinished and pending agents Cancelled; focus stays on the slot, now Run again | C; matrix |
+| any | Run again | everything cleared; the new run starts with the empty panel | C |
+| any | double click Run again | the second click on Cancel run is ignored | E |
+
 ## 6. Components
 
 | Component | Reads | Does |
@@ -248,7 +280,7 @@ Component-local state: open trace (`AgentCard`), open event log (`TopBar`), the 
 | `AgentCard` | its agent, waiting for the user, is shown | Label, badge, one truncated status line, Show steps. Clicking the card selects it: an agent the user can act on now (in `waitingQueue`) shows its decision; any other agent, one whose command is still pending included, opens its record in the panel. Footer button (the keyboard path; `aria-current` on the card the panel is about, since it navigates rather than toggles): "Decision in the panel" for an approval or a question, "Retry in the panel" for a retryable failure (Retry is in the panel only), otherwise "Details in the panel". Fixed badge column. The card is a group named by its title (`aria-labelledby`), so its buttons are told apart per agent. Before the first status the line names the state ("Queued"). The status line is the newest of the status and the last step (after an answer the agent reports a step before its next status); failed keeps its status line; a cancelled agent shows "Last status: " + its newest text (status or step, whichever is newer). The selected card (a decision, an outcome or a record) is white and gets the connector (see Visual design). The trace opens between the status line and the footer. |
 | `AgentList` (`AgentCard.tsx`) | plan order, run status | The heading "Agents - plan order", then one card per agent in plan order; "Planning..." before the plan, or "The run was cancelled before the plan arrived." after a cancel. |
 | `AgentTrace` | its agent | `traceOf` as a numbered timeline (step numbers run across attempts, a check icon per step on a teal line that turns red into the failure row, which shows its status line verbatim); "Attempt N" dividers appear once there is a second attempt; a "Working" row with the status line while the agent runs, only if that status is newer than its last gate and the attempt has steps; empty text without steps. An open trace is capped at 400px with its own scroll; a new step or the Working row appearing or going scrolls it to the bottom unless the user scrolled up. |
-| `DecisionPanel` | shown decision, outcome, waiting count | One decision at a time in a `Frame` (see Visual design): failure, confirmation (view, editor, edited version) or question; the header shows "K need you" while decisions wait. A confirmation shows every field that will be sent; the body takes its natural height, never clipped by an inner scroll (the panel itself scrolls), so the whole draft is on screen before an irreversible action. After an accepted command the outcome replaces the decision: the first line is what was sent ("Approved", "Edit submitted", "Answer sent: ...", "Retry sent: attempt N"; at most two lines, the full answer in the tooltip and the record), the second line is the agent now ("Waiting for the agent to respond." while the command is pending, "The agent is preparing the edited email..." with a spinner after an edit (then the re-asked confirmation opens by itself), otherwise the agent's status line, verbatim (`statusLineOf`)). In the editor, Save changes stays disabled until the draft differs from the current revision, so an unchanged Save cannot re-ask the same question. Under it, in a slot of fixed height, "Next decision: <agent label>" when a decision waits (the outcome's own agent first when it asks again, otherwise the longest wait), or "Nothing else needs you right now."; the switch happens only on click. Empty: "The run was cancelled." after a cancel (also before the plan), "The agents are starting" while every agent is queued, otherwise worded by phase. In `agent` mode the panel shows the record instead, under the header "Agent record", with the same footer: "Next decision: <agent>" (the picked decision while it still waits, otherwise the longest wait) or "Nothing else needs you right now." The panel header and landmark read "Decisions" (true in every state, with "K need you" beside it only while decisions wait), or "Agent record" while a record is open. The failure decision says "The 1 step ... stays" or "The N steps ... stay". |
+| `DecisionPanel` | shown decision, outcome, waiting count | One decision at a time in a `Frame` (see Visual design): failure, confirmation (view, editor, edited version) or question; the header shows "K need you" while decisions wait. A confirmation shows every field that will be sent; the body takes its natural height, never clipped by an inner scroll (the panel itself scrolls), so the whole draft is on screen before an irreversible action. After an accepted command the outcome replaces the decision: the first line is what was sent ("Approved", "Edit submitted", "Answer sent: ...", "Retry sent: attempt N"; at most two lines, the full answer in the tooltip and the record), the second line is the agent now ("Waiting for the agent to respond." while the command is pending, "The agent is preparing the edited email..." with a spinner after an edit (then the re-asked confirmation opens by itself), otherwise the agent's status line, verbatim (`statusLineOf`)). In the editor the body is capped at 320px with its own scroll, so Save stays reachable for a very long draft (the approval view still shows the whole draft); Save changes stays disabled until the draft differs from the current revision, so an unchanged Save cannot re-ask the same question. Under it, in a slot of fixed height, "Next decision: <agent label>" when a decision waits (the outcome's own agent first when it asks again, otherwise the longest wait), or "Nothing else needs you right now."; the switch happens only on click. Empty: "The run was cancelled." after a cancel (also before the plan), "The agents are starting" while every agent is queued, otherwise worded by phase. In `agent` mode the panel shows the record instead, under the header "Agent record", with the same footer: "Next decision: <agent>" (the picked decision while it still waits, otherwise the longest wait) or "Nothing else needs you right now." The panel header and landmark read "Decisions" (true in every state, with "K need you" beside it only while decisions wait), or "Agent record" while a record is open. The failure decision says "The 1 step ... stays" or "The N steps ... stay". |
 | `AgentRecord` | its agent, its result items, its actions | What one agent did and what the user sent: current status line (two lines of fixed height, the full text in its tooltip); "You approved" with the full sent draft (To, Subject, other fields, body at its natural height, revision) and its effect class ("Irreversible: ...", red for irreversible); "You sent an edited version"; "You answered: ..."; "You retried: attempt N". The trace stays in the card. Then, below what the user did, its result items (`result.items` for that agent, marked "Updating" while the result is outdated and the run is not cancelled): a result arriving later is added under what the user is reading, not above it. |
 | `RetryButton` | its agent | The one Retry used by the panel and the partial result; in `decisions` mode it stores its outcome when the panel is about that agent or already shows an outcome; a retry from the result never replaces another agent's open decision or an open record. |
 | `EventLog` | raw log | Debug table of every event (region "Event log" inside the run card; #, seq with a late mark, time, type, agent, detail), late rows amber, failure rows red, Copy JSON (the button reads "Copied" or "Copy failed" for 2 s, from the clipboard promise). A debug view: closed by default, and when open it shows every event at full height (the page scrolls); it grows while events stream and may move the content below it. A fixed table layout with set column widths; type and agent are one line and the detail at most two (`ClampedText`, full text in the tooltip), so a long payload never widens the table. |
@@ -262,7 +294,8 @@ Component-local state: open trace (`AgentCard`), open event log (`TopBar`), the 
   border `#c8d0d8`, radii 3 / 5 / 8px, Public Sans for text and IBM Plex Mono for code, seq and addresses
   (self-hosted through fontsource packages imported in `index.css`, so the app and e2e work offline). Components use only theme tokens: no hex values, and the canvas'
   13 / 15 / 12.5 / 22 / 28px sizes are type tokens (`text-label`, `text-title`, `text-code`, `text-heading`,
-  `text-display`) next to Tailwind's steps.
+  `text-display`) next to Tailwind's steps. The class merger (`cn` in `src/lib/utils.ts`, used by every shadcn
+  component) is configured to know these tokens as font sizes, so a token passed to a component is not dropped.
 - Layout (boards 0, 1, 4): a centred column up to 1200px with "Wand - Agent console" above; one raised card
   holds the request with Run again (Cancel run in its place while the run works), the run line and the debug
   row (and the event log when open); below it the result across the full width once it arrives, then the agents (2fr) and the decision panel (3fr, sticky; a panel taller than the window scrolls on its
@@ -328,7 +361,8 @@ Component-local state: open trace (`AgentCard`), open event log (`TopBar`), the 
   and one truncated note line ("All N agents finished", plus "Updated after retry." after a replacement, the retry notes, "This is the result from before the run
   was cancelled. K of N agents had failed."), then the summary (at most 64ch); items in a two-column list (148px
   for the kind and the agent's label, which opens the agent's record; an error item is tinted red with its
-  Retry (top-aligned, to the right of its text, in a fixed-width slot); Updating dims the summary and the items to 72%) and sources as outline badges (22px high).
+  Retry (top-aligned, to the right of its text, in a fixed-width slot); an item's detail at most three lines (the
+  full text in its tooltip and the record); Updating dims the summary and the items to 72%) and sources as outline badges (22px high).
 - Debug row: speed 0.25x / 0.5x / 1x / 2x / 4x, Jitter, and the toggle "Event log (N)" / "Hide event log (N)".
 - Event log: inside the run card; "N events received - K arrived late", Copy JSON, and a table with #, seq
   (with a "late" mark), time (UTC, to the millisecond), type, agent and detail ("state - status line",
@@ -405,6 +439,7 @@ in `src/test/fakeOrchestrator.ts`. Only `mockAlias.test.ts` loads the real mock.
 
 | Suite | Covers |
 | --- | --- |
+| `reduceOrder.property.test.ts` | The recorded run's events after the plan in 300 seeded random orders give the same model as seq order: traces sorted without duplicates, newest status (done never regresses), newest gate, the waiting queue, the newest result with `outdated` computed. |
 | `console.reducer.test.ts` | Every event type, late events, attempts, gates and revisions, result replacement, cancel, the raw log, a handler that throws, the edit seam (a step between `edit()` and the re-emitted confirmation keeps `needs_approval` and the queue place). |
 | `selectors.test.ts` | Run header, phase (an accepted Retry after a partial result is running), pending command, the retry lifecycle, trace grouping, decision queue order (edit keeps its place), retryable, status line. |
 | `subscription.test.ts` | The manager against a fake orchestrator (the real mock is never loaded): subscribe before start asserted directly, speed and jitter passed, a refused start stopped and not counted, a second start stops the previous run, commands recorded only when accepted, `afterSeq` read before the call, a pending command not sent again, what `start`, `cancel` and `reset` clear. |

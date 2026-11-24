@@ -144,7 +144,7 @@ function Editor({
       footer={
         <>
           <div className="flex gap-2">
-            <Button size="lg" onClick={save} disabled={empty || unchanged}>
+            <Button size="lg" onClick={(e) => e.detail <= 1 && save()} disabled={empty || unchanged}>
               Save changes
             </Button>
             <Button size="lg" variant="outline" onClick={onCancel}>
@@ -182,7 +182,9 @@ function Editor({
             id={`body-${agent.id}`}
             value={draft.body}
             onChange={(e) => change('body', e.target.value)}
-            className="min-h-60 resize-y"
+            // The editor caps the body and scrolls it, so Save changes stays reachable for a very long draft; the
+            // approval view shows the whole draft.
+            className="max-h-80 min-h-60 resize-y overflow-y-auto"
           />
         </div>
       )}
@@ -286,7 +288,7 @@ export function QuestionDecision({ agent, gate, refused, act }: { agent: AgentMo
       footer={
         <>
           <div>
-            <Button size="lg" onClick={send} disabled={text === null}>
+            <Button size="lg" onClick={(e) => e.detail <= 1 && send()} disabled={text === null}>
               Send answer
             </Button>
           </div>

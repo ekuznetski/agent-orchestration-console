@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, fireEvent, render, screen, within } from '@testing-library/react'
 import { emit as emitRaw, fakeOrchestrator } from '@/test/fakeOrchestrator'
-import { reset, start } from '@/subscriptionManager/subscription'
+import { cancel, reset, start } from '@/subscriptionManager/subscription'
 import { AgentList } from './AgentCard'
 import { DecisionPanel } from './DecisionPanel'
 import { ResultBlock } from './ResultBlock'
@@ -381,6 +381,105 @@ describe('next decision', () => {
     status('drafting', 'running')
     confirmation()
     expect(panel().getByText('Retry this agent?')).toBeTruthy()
+  })
+})
+
+// Cells of the panel matrix (docs/architecture.md, "Panel: what it shows x what happens") not covered above.
+describe('panel matrix', () => {
+  const badge = (id: string) => within(screen.getByTestId(`agent-card-${id}`)).getByTestId('agent-badge')
+
+  it("A's gate closes without the user: the panel shows the next open decision", () => {
+    setup()
+    openCard('drafting')
+    expect(panel().getByText('Send this email?')).toBeTruthy()
+    status('drafting', 'running')
+    expect(panel().queryByText('Send this email?')).toBeNull()
+    expect(panel().getByText('Retry this agent?')).toBeTruthy()
+  })
+
+  it("A's gate closes while its editor is open: the editor goes, the typed draft is kept", () => {
+    setup()
+    openCard('drafting')
+    click('Edit email')
+    fireEvent.change(panel().getByLabelText('Subject'), { target: { value: 'Typed' } })
+    status('drafting', 'running')
+    expect(panel().queryByLabelText('Subject')).toBeNull()
+    confirmation()
+    openCard('drafting')
+    expect((panel().getByLabelText('Subject') as HTMLInputElement).value).toBe('Typed')
+  })
+
+  it("A fails while its confirmation is shown: A's failure replaces it in place", () => {
+    setup()
+    openCard('drafting')
+    status('drafting', 'failed', { error: { code: 'x', message: 'smtp down', retryable: true } })
+    expect(panel().getByText('Retry this agent?')).toBeTruthy()
+    expect(panel().getByText('smtp down')).toBeTruthy()
+    expect(badge('drafting').textContent).toBe('Failed')
+  })
+
+  it('a double click on Next decision that lands on Retry does not retry, nor does a double click on Send answer', () => {
+    setup()
+    openCard('drafting')
+    click('Approve and send')
+    fireEvent.click(panel().getByRole('button', { name: 'Next decision: Research it' }), { detail: 1 })
+    fireEvent.click(panel().getByRole('button', { name: 'Retry' }), { detail: 2 })
+    expect(fakeOrchestrator.retry).not.toHaveBeenCalled()
+    openCard('scheduling')
+    fireEvent.click(panel().getByText('Week A'))
+    fireEvent.click(panel().getByRole('button', { name: 'Send answer' }), { detail: 2 })
+    expect(fakeOrchestrator.resolve).not.toHaveBeenCalled()
+  })
+
+  it('outcome of A, A asks again: the outcome stays and the footer offers A first', () => {
+    setup()
+    openCard('scheduling')
+    fireEvent.click(panel().getByText('Week A'))
+    click('Send answer')
+    step('scheduling')
+    escalation()
+    expect(within(outcome()).getByText('Answer sent: Week A')).toBeTruthy()
+    expect(panel().getByRole('button', { name: 'Next decision: Schedule it' })).toBeTruthy()
+  })
+
+  it('outcome of A, A fails: the outcome stays, its second line is the failure, the footer offers A', () => {
+    setup()
+    openCard('drafting')
+    click('Approve and send')
+    status('drafting', 'failed', { error: { code: 'x', message: 'smtp down', retryable: true } })
+    expect(outcome().textContent).toBe('Draft itApproveddrafting failed')
+    expect(panel().getByRole('button', { name: /^Next decision:/ })).toBeTruthy()
+  })
+
+  it('outcome of A, Cancel run: the panel says the run was cancelled', () => {
+    setup()
+    openCard('drafting')
+    click('Approve and send')
+    act(() => cancel())
+    expect(panel().getByText('The run was cancelled.')).toBeTruthy()
+    expect(badge('drafting').textContent).toBe('Cancelled')
+  })
+
+  it("record of A with a pending command: A's new gate opens A's decision", () => {
+    setup()
+    openCard('drafting')
+    click('Approve and send')
+    openCard('drafting')
+    expect(panel().getByText('Agent record')).toBeTruthy()
+    step('drafting')
+    confirmation()
+    expect(panel().getByText('Send this email?')).toBeTruthy()
+  })
+
+  it('the empty panel names the phase: finishing, then finished', () => {
+    act(() => {
+      start('Task', 1, false)
+    })
+    emit({ type: 'plan', seq: 1, runId: 'r', task: 'Task', subtasks: [{ id: 'research', type: 'research', label: 'Research it' }] })
+    emit({ type: 'agent_status', seq: 2, agentId: 'research', state: 'done', statusLine: 'Done' })
+    expect(panel().getByText('The agents are done. The result appears at the top.')).toBeTruthy()
+    emit({ type: 'result', seq: 3, summary: 'S', items: [] })
+    expect(panel().getByText('The run is finished. The result is at the top.')).toBeTruthy()
   })
 })
 

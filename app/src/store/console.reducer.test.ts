@@ -211,6 +211,18 @@ describe('cancel', () => {
 })
 
 describe('result', () => {
+  it('is outdated on arrival when a newer status came first', () => {
+    const plan = events.find((e) => e.type === 'plan')!
+    const state = run([
+      plan,
+      { type: 'agent_status', seq: 2, ts: '', agentId: 'agent_research', state: 'failed', statusLine: 'Failed' },
+      { type: 'agent_status', seq: 4, ts: '', agentId: 'agent_research', state: 'running', statusLine: 'Retrying', attempt: 2 },
+      { type: 'agent_status', seq: 5, ts: '', agentId: 'agent_research', state: 'done', statusLine: 'Done' },
+      { type: 'result', seq: 3, ts: '', summary: 'Partial', degraded: true, items: [] },
+    ] as ConsoleEvent[])
+    expect(state.result!.outdated).toBe(true)
+  })
+
   it('is replaced by a newer one and marked outdated by a newer status', () => {
     const result = (degraded: boolean): ConsoleEvent =>
       ({

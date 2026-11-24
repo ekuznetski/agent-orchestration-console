@@ -219,7 +219,9 @@ const handlers: Handlers = {
       result: {
         event,
         version: (state.result?.version ?? 0) + 1,
-        outdated: false,
+        // A status newer than the result may have arrived before it (delivery order wobbles between agents):
+        // then the result is already outdated.
+        outdated: Object.values(state.agents).some((agent) => agent.status !== null && agent.status.seq > event.seq),
       },
     }
   },
