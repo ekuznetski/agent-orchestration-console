@@ -3,6 +3,8 @@
 The assignment and the mock's contract: [mock/README.md](mock/README.md), the original assignment text; its paths
 are relative to the repo root.
 
+Demo video (1:45, captions): [docs/demo.mp4](docs/demo.mp4).
+
 A front end for the provided mock orchestrator: one request fans out to three agents, and the console shows their
 progress, the decisions that need the user and the result. One design rule runs through it: async events never
 move or replace what the user is reading, with the exceptions named under Decisions and trade-offs: the result
