@@ -39,6 +39,16 @@
   --color-card: var(--card);
   --color-foreground: var(--foreground);
   --color-background: var(--background);
+  --color-tone-neutral: var(--tone-neutral);
+  --color-tone-neutral-bg: var(--tone-neutral-bg);
+  --color-tone-active: var(--tone-active);
+  --color-tone-active-bg: var(--tone-active-bg);
+  --color-tone-attention: var(--tone-attention);
+  --color-tone-attention-bg: var(--tone-attention-bg);
+  --color-tone-danger: var(--tone-danger);
+  --color-tone-danger-bg: var(--tone-danger-bg);
+  --color-tone-success: var(--tone-success);
+  --color-tone-success-bg: var(--tone-success-bg);
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);
@@ -49,6 +59,17 @@
 }
 
 :root {
+  /* State colours: colour means state only (one red, one yellow, one green). */
+  --tone-neutral: #6b7280;
+  --tone-neutral-bg: #eef0f3;
+  --tone-active: #3a5f9e;
+  --tone-active-bg: #e8eef8;
+  --tone-attention: #a66a00;
+  --tone-attention-bg: #fdf4dc;
+  --tone-danger: #c2413b;
+  --tone-danger-bg: #fbeceb;
+  --tone-success: #2f7d4f;
+  --tone-success-bg: #e8f4ec;
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);
   --card: oklch(1 0 0);
@@ -126,5 +147,12 @@
   }
   html {
     @apply font-sans;
+  }
+  button:not(:disabled),
+  [role='button'],
+  [role='radio']:not([aria-disabled='true']),
+  input[type='radio']:not(:disabled),
+  input[type='checkbox']:not(:disabled) {
+    cursor: pointer;
   }
 }

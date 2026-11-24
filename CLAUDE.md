@@ -70,4 +70,13 @@ This protocol applies when ending a Beads implementation workflow. It is subordi
 
 ## Build & Test
 
-_Fill in when the project is scaffolded._
+```bash
+cd app
+pnpm install
+pnpm dev       # http://localhost:5173 (any free port; e2e uses 5297)
+pnpm build     # tsc -b and vite build
+pnpm test      # Vitest unit and component tests
+pnpm lint      # oxlint
+pnpm format    # prettier --write src e2e *.ts
+pnpm e2e       # Playwright, starts the dev server on 5297
+```

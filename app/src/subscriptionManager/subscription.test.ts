@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { OrchestratorEvent } from '@mock/orchestrator.js'
 import { createMockOrchestrator } from '@mock/orchestrator.js'
 import { useConsoleStore } from '@/store/console.store'
+import { pendingCommand } from '@/store/selectors'
 import { useViewStore } from '@/store/view.store'
 import { approve, cancel, edit, reset, resolve, retry, start } from './subscription'
 
@@ -30,8 +31,9 @@ const fake = vi.hoisted(() => {
   return { orchestrator, calls, emit: (event: unknown) => listener?.(event) }
 })
 
-vi.mock('@mock/orchestrator.js', async (importOriginal) => ({
-  ...(await importOriginal<object>()),
+// A complete fake module: the real mock is never loaded here. Everything else is imported as types only.
+vi.mock('@mock/orchestrator.js', () => ({
+  DEFAULT_TASK: 'Default task',
   createMockOrchestrator: vi.fn(() => fake.orchestrator),
 }))
 
@@ -67,6 +69,12 @@ describe('start', () => {
     expect(fake.orchestrator.start).toHaveBeenCalledWith('Research Northwind')
   })
 
+  it('a second start stops the previous run first', () => {
+    start('First', 1, false)
+    start('Second', 1, false)
+    expect(fake.calls).toEqual(['subscribe', 'start', 'unsubscribe', 'reset', 'subscribe', 'start'])
+  })
+
   it("returns the orchestrator's refusal", () => {
     fake.orchestrator.start.mockReturnValueOnce(false)
     expect(start('Task', 1, false)).toBe(false)
@@ -80,13 +88,24 @@ describe('start', () => {
 })
 
 describe('commands', () => {
-  it('records a command only when the orchestrator accepts it, with afterSeq read before the call', () => {
+  it('records a command only when the orchestrator accepts it', () => {
     startWithGate()
     fake.orchestrator.approve.mockReturnValueOnce(false)
     expect(approve('agent_drafting')).toBe(false)
     expect(drafting().actions).toEqual([])
     expect(approve('agent_drafting')).toBe(true)
     expect(drafting().actions).toEqual([{ kind: 'approve', afterSeq: 2 }])
+  })
+
+  it('reads afterSeq before the call, so an answer delivered inside the call still answers the command', () => {
+    startWithGate()
+    fake.orchestrator.approve.mockImplementationOnce(() => {
+      emit({ type: 'agent_step', seq: 3, agentId: 'agent_drafting', act: 'decided', detail: 'Approved' })
+      return true
+    })
+    expect(approve('agent_drafting')).toBe(true)
+    expect(drafting().actions).toEqual([{ kind: 'approve', afterSeq: 2 }])
+    expect(pendingCommand(drafting())).toBeNull()
   })
 
   it('does not call the orchestrator for a command while one is pending, and reports it as in flight', () => {

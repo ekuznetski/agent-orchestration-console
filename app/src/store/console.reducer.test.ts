@@ -90,12 +90,12 @@ describe('the recorded run in arrival order', () => {
   })
 
   it('places the step that arrives after done without reopening the agent', () => {
-    const before = run(upTo(30))
-    expect(before.agents.agent_scheduling.tag).toBe('done')
-    const after = run(upTo(29))
-    expect(after.agents.agent_scheduling.tag).toBe('done')
-    expect(after.agents.agent_scheduling.status?.seq).toBe(30)
-    expect(after.agents.agent_scheduling.steps.at(-1)?.seq).toBe(29)
+    const beforeLateStep = run(upTo(30))
+    expect(beforeLateStep.agents.agent_scheduling.tag).toBe('done')
+    const afterLateStep = run(upTo(29))
+    expect(afterLateStep.agents.agent_scheduling.tag).toBe('done')
+    expect(afterLateStep.agents.agent_scheduling.status?.seq).toBe(30)
+    expect(afterLateStep.agents.agent_scheduling.steps.at(-1)?.seq).toBe(29)
   })
 
   it('never lets an older status override a newer one', () => {

@@ -46,8 +46,8 @@ What each call clears in the view store (request, speed and jitter always stay):
 
 - Commands: the mock returns `true` when it accepted a command, `false` when the agent was not in a state
   that accepts it (README). Only an accepted command is recorded, as the local event `command_sent`, after
-  the call. Its `afterSeq` is the agent's `maxSeq` read before the call, so an answer that lands during the
-  call still counts as newer than the command. A command sent while the agent's previous command is still
+  the handler returns. That relies on the README: the mock is "driven by `setTimeout`", so an agent's answer
+  never arrives inside the call. `afterSeq` is the agent's `maxSeq` read before the call. A command sent while the agent's previous command is still
   pending does not reach the mock and returns `true` (it is already in flight), so it never reads as refused.
   Components show their own "no longer waiting" text when a command is refused.
 
@@ -164,7 +164,7 @@ Component-local state: open trace (`AgentCard`), open event log (`TopBar`), the 
 | `App` | plan order, plan task, run key, `runs` | Start card until the first plan; then top bar, result, agents, decision panel. Cards are keyed by run so a new run remounts them. |
 | `StartCard` (`TopBar.tsx`) | request, speed, jitter, `runs` | Request, speed and jitter before the first run; "Starting..." and off until the plan arrives; off for an empty request. |
 | `TopBar` | run header, plan task, log size | Request (shows `plan.task` while the run works), Cancel run / Run again, one-line summary, Debug row (speed and jitter are fixed during a run), event log toggle. |
-| `ResultBlock` | latest result, run header, request, speed, jitter | The result above the agents, appearing once it arrives; complete, partial, updating (outdated) or cancelled; Retry on an error item that is still in the queue (the partial note says "retry it" only then); "Run again" on a cancelled run's result. |
+| `ResultBlock` | latest result, run header, request, speed, jitter | The result above the agents, appearing once it arrives (when it first appears it pushes the agents down once per run: the one allowed stream-caused layout shift); complete, partial, updating (outdated) or cancelled; Retry on an error item that is still in the queue (the partial note says "retry it" only then); "Run again" on a cancelled run's result. |
 | `AgentCard` | its agent, in queue, is shown | Label, badge, one truncated status line, Show steps; the whole card selects its decision; "Decision in the panel" for an approval or a question, "Retry in the panel" for a retryable failure (Retry is in the panel only). Fixed badge column. The status line is the newest of the status and the last step (after an answer the agent reports a step before its next status); failed keeps its status line; a cancelled agent shows "Last status: " + its last status line. |
 | `AgentTrace` | its agent | `traceOf`; "Attempt N" dividers appear once there is a second attempt; a "Working" row with the status line while the agent runs, only if that status is newer than its last gate and the attempt has steps; empty text without steps. An open trace is capped at 400px with its own scroll; a new step scrolls it to the bottom unless the user scrolled up. |
 | `DecisionPanel` | queue, shown decision, receipt, waiting count | One decision at a time with "N of M" and Prev/Next; failure, confirmation (view, editor, waiting for the edited version, edited version) or question; receipts after approve, resolve, retry with "Next: ...", or "Nothing needs you right now" when nothing else waits. After 3 seconds a receipt opens the next decision by itself, only if one was waiting when the user acted; which one is read when the time is up. Going back to a decision whose command is still pending shows its receipt (rebuilt from the model and the stored answer), so the agent's next event cannot swap another decision in. Empty: "The agents are starting" while every agent is queued, otherwise worded by phase. |
@@ -213,9 +213,18 @@ rules).
 | Suite | Covers |
 | --- | --- |
 | `console.reducer.test.ts` | Every event type, late events, attempts, gates and revisions, result replacement, cancel, the raw log, a handler that throws, the edit seam (a step between `edit()` and the re-emitted confirmation keeps `needs_approval` and the queue place). |
-| `selectors.test.ts` | Run header, pending command, trace grouping, decision queue order (edit keeps its place), retryable. |
-| `subscription.test.ts` | The manager against the real mock: the run reaches the store, commands recorded only when accepted, what `reset` clears. Subscribe-before-start is covered only indirectly (the plan arrives). |
+| `selectors.test.ts` | Run header, pending command, the retry lifecycle, trace grouping, decision queue order (edit keeps its place), retryable, status line. |
+| `subscription.test.ts` | The manager against a fake orchestrator (the real mock is never loaded): subscribe before start asserted directly, speed and jitter passed, a second start stops the previous run, commands recorded only when accepted, `afterSeq` read before the call, a pending command not sent again, what `start`, `cancel` and `reset` clear. |
+| `AgentList.test.tsx` | N agents give N cards, a fourth agent type, a card updated in place, trace order with the late step, the empty trace, Done kept after the late step. |
+| `PanelSelection.test.ts` | Which decision the panel shows, the receipt hidden after the run ends with an empty queue, receipt first in `shownDecisionNow`, `select` vs `pin`. |
+| `mockAlias.test.ts` | The `@mock` alias loads the real mock (the only unit test that touches it). |
+| `e2e/pageLoads.e2e.ts` | The page loads in a real browser. |
+
+Planned, added as they land:
+
+| Suite | Covers |
+| --- | --- |
 | `Actions.test.tsx` | Approve, edit and re-approval, kept edit text, resolve, retry, refused commands, a retry from a card next to another agent's receipt. |
 | `ModelError.test.tsx` | A handler that throws sets `modelError`, the top bar warns, and the store keeps applying later events. |
-| `CancelledRun`, `FourthAgent`, `AppErrorFallback` tests | Cancelled screen, an unknown agent type and action, the error fallback (with a stub reset, not the real manager). |
-| `e2e/definition-of-done.e2e.ts` | Each Definition-of-done item in a real browser with the real mock, plus a partial result retried from the result and Run again; run once without and once with jitter. |
+| `CancelledRun`, `AppErrorFallback` tests | Cancelled screen, the error fallback (with a stub reset, not the real manager). |
+| `e2e/definition-of-done.e2e.ts` | Each Definition-of-done item from the task text in a real browser with the real mock, plus a partial result retried from the result and Run again; run once without and once with jitter. |
