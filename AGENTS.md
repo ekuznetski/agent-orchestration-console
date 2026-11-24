@@ -31,6 +31,7 @@ bd dolt push          # Push beads data to remote
 - A layout shift caused by a streamed event is a bug; a shift the user causes (expand, click) is fine.
 - Stack: React 19, Vite, TypeScript, Tailwind v4, shadcn/ui on Base UI, Zustand 5 (useShallow for derived objects and arrays), react-error-boundary, lucide-react, Vitest with Testing Library and jsdom, Playwright, oxlint, prettier, React Compiler; package manager pnpm. Dependencies and configs only via generators (`pnpm create`, `pnpm add`, `shadcn add`, `playwright init`); name the package and why, wait for the owner's yes.
 - No git commit and no push without the owner's explicit yes.
+- Beads stay local in this repository: never run bd dolt push, bd dolt remote or any beads sync to a git remote, even when a git push happens.
 - Code text: no Russian, no emoji, no em dash.
 
 ## Build & Test

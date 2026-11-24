@@ -32,7 +32,8 @@ Plain module functions (an ES module is already a singleton): `start`, `cancel`,
 
 - `start(request, speed, jitter)`: stops the previous run, applies `run_reset`, clears screen state (selection,
   receipt, edits) and counts the run in `view.store.runs`, creates a new orchestrator with the speed and jitter,
-  subscribes before `start()` (the mock delivers only events emitted after `subscribe`), then calls `start`.
+  subscribes before `start()` (the mock delivers only events emitted after `subscribe`), then calls `start` and
+  returns its boolean.
 - `cancel()`: unsubscribes, `reset()`s the mock (cancels its timers), applies `run_cancelled`.
 - `reset()`: used by the error fallback's "Start over"; stops the run and goes back to the start card.
 What each call clears in the view store (request, speed and jitter always stay):
@@ -45,8 +46,10 @@ What each call clears in the view store (request, speed and jitter always stay):
 
 - Commands: the mock returns `true` when it accepted a command, `false` when the agent was not in a state
   that accepts it (README). Only an accepted command is recorded, as the local event `command_sent`, after
-  the call. That is safe because the mock answers through timers, so the agent's next event always lands
-  after `command_sent`. Components show their own "no longer waiting" text when a command is refused.
+  the call. Its `afterSeq` is the agent's `maxSeq` read before the call, so an answer that lands during the
+  call still counts as newer than the command. A command sent while the agent's previous command is still
+  pending does not reach the mock and returns `true` (it is already in flight), so it never reads as refused.
+  Components show their own "no longer waiting" text when a command is refused.
 
 ## 3. Run model: `reduce`
 
@@ -70,7 +73,7 @@ What each call clears in the view store (request, speed and jitter always stay):
 | --- | --- |
 | `run_reset` (local) | Back to `initialState`. |
 | `run_cancelled` (local) | Run status `cancelled`; every agent that is not `done` or `failed` becomes `cancelled`. |
-| `command_sent` (local) | Appends `{ kind, afterSeq: agent.maxSeq }` to the agent's `actions`. |
+| `command_sent` (local) | Appends `{ kind, afterSeq }` to the agent's `actions`; `afterSeq` is the agent's `maxSeq` read before the call. |
 | `plan` | Creates one `AgentModel` per subtask, in plan order; stores `task`, `order`, `startedAt`. |
 | `agent_status` | Kept only if its `seq` is newer than the stored status (a late `running` never overrides `done`). Updates attempts; a status newer than the latest result marks that result `outdated`. |
 | `agent_step` | Inserted into `steps` by `seq`, so a late step lands in its place. |
@@ -127,6 +130,7 @@ attempt; without it, `failed` followed by a non-failed status does. A `failed` s
 | `traceOf(agent)` | Steps grouped by attempt, in seq order, numbered across attempts, with the failure row that ended an attempt (its status line, plus the raw error when `retryable` is false). No row for the user's own commands: the "Attempt N" divider says a retry happened, and after approve, edit and resolve the agent reports its own step. |
 | `decisionQueue` | Agents with a decision in the panel, oldest wait first: open gate (by `openedSeq`), retryable failure (by its status seq), or an edit waiting for the agent. Empty after a cancel. |
 | `waitingQueue` | `decisionQueue` without agents whose command is pending: what the user can act on now. |
+| `statusLineOf(agent)` | The card's status line: the newest text by seq of the latest status and the latest step; a failed agent keeps its status line; a cancelled one shows "Last status: " + its last status line. |
 
 `needsUser(agent)` is the single rule for "waits for the user". A failure with `error.retryable === false`
 is not in the queue and gets no Retry; a failure without `error` is offered Retry.
