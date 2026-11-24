@@ -9,6 +9,7 @@ import { RetryButton } from './RetryButton'
 export function ResultBlock() {
   const result = useConsoleStore((state) => state.result)
   const agents = useConsoleStore((state) => state.agents)
+  const cancelled = useConsoleStore((state) => state.status === 'cancelled')
   const queue = useDecisionQueue()
   if (!result) return null
   const retryable = (agentId: string) => queue.includes(agentId) && agents[agentId].tag === 'failed'
@@ -23,6 +24,7 @@ export function ResultBlock() {
       <h2 className="text-base font-bold" style={{ color: headColor }}>
         {head}
       </h2>
+      {cancelled && <p className="text-muted-foreground">From before the run was cancelled.</p>}
       {!result.outdated && canRetry && <p className="text-muted-foreground">An agent failed. Retry it to update this result.</p>}
       <div className={result.outdated ? 'flex flex-col gap-2 opacity-50' : 'flex flex-col gap-2'}>
         <p>{result.event.summary}</p>

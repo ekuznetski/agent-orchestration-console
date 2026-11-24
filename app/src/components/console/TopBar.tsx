@@ -154,11 +154,7 @@ export function TopBar() {
           <b>{SUMMARY[header.phase]}</b>
           <span>- {counts.join(', ')}</span>
           {refused && <span style={{ color: 'var(--tone-danger)' }}>The orchestrator did not start the run.</span>}
-          {modelError && (
-            <span style={{ color: 'var(--tone-danger)' }}>
-              The screen may not match what the agents did: an event could not be applied.
-            </span>
-          )}
+          {modelError && <span style={{ color: 'var(--tone-danger)' }}>The screen may not match what the agents did</span>}
         </div>
         <DebugRow locked={active} logOpen={logOpen} onToggleLog={() => setLogOpen(!logOpen)} />
       </div>
