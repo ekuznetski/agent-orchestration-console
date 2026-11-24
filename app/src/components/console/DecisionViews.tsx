@@ -27,8 +27,8 @@ const Refused = ({ show }: { show: boolean }) => (show ? <p className="text-fail
 const BAND = {
   neutral: 'bg-muted border-border',
   needs: 'bg-needs border-needs-edge',
-  failed: 'bg-failed-tint border-failed text-failed',
-  done: 'bg-done-tint border-done text-done-ink',
+  failed: 'bg-failed-tint border-failed',
+  done: 'bg-done-tint border-done',
 }
 
 /** The panel's frame for one decision or outcome (design canvas): a coloured band with the agent's label and
@@ -49,7 +49,8 @@ export function Frame({
   return (
     <div className="flex flex-1 flex-col">
       <div className={`border-b px-4 py-3 ${BAND[band]}`}>
-        <div className="text-xs font-semibold">{who}</div>
+        {/* The title stays in the text colour; only a failure colours the agent's label. */}
+        <div className={`text-xs font-semibold ${band === 'failed' ? 'text-failed' : ''}`}>{who}</div>
         <h3 className="mt-0.5 text-base font-semibold">{title}</h3>
       </div>
       {children && <div className="flex flex-col gap-3 p-4 text-sm">{children}</div>}
@@ -152,7 +153,7 @@ function Editor({
     >
       <Fields>
         <Row label={labels.targetLabel}>
-          <span className="text-muted-foreground font-mono text-code [overflow-wrap:anywhere]">{gate.target}</span>
+          <span className="font-mono text-code [overflow-wrap:anywhere]">{gate.target}</span>
         </Row>
       </Fields>
       {draft.subject !== undefined && (
@@ -295,8 +296,6 @@ export function QuestionDecision({ agent, gate, refused, act }: { agent: AgentMo
         </Label>
         <Textarea
           id={`own-${agent.id}`}
-          rows={4}
-          placeholder="Type an answer"
           value={words}
           onChange={(e) =>
             // Typing makes the words the answer; clearing them gives the answer back to a stored option.
@@ -307,7 +306,7 @@ export function QuestionDecision({ agent, gate, refused, act }: { agent: AgentMo
             })
           }
           // Holding the answer: the primary border, same width, like a chosen option.
-          className={`min-h-24 resize-y ${usesWords && words.trim() ? 'border-primary' : ''}`}
+          className={`min-h-[120px] resize-y ${usesWords && words.trim() ? 'border-primary' : ''}`}
         />
       </div>
     </Frame>

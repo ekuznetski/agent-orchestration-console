@@ -107,6 +107,21 @@ test('5. an escalation pauses only its own agent; an answer resumes it', async (
   await expect(badge(page, 'scheduling')).toHaveText('Done')
 })
 
+test('a long free-text answer is clamped to two lines in the trace, with the full text in the tooltip', async ({ page, jitter }) => {
+  await startRun(page, jitter)
+  await expect(badge(page, 'scheduling')).toHaveText('Needs answer')
+  await card(page, 'scheduling').getByRole('button', { name: 'Decision in the panel' }).click()
+  const words = 'Any morning works, '.repeat(27).slice(0, 500)
+  await panel(page).getByLabel('Or answer in your own words').fill(words)
+  await panel(page).getByRole('button', { name: 'Send answer' }).click()
+  const scheduling = card(page, 'scheduling')
+  await scheduling.getByRole('button', { name: /Show steps/ }).click()
+  const decided = scheduling.locator('li', { hasText: 'Decided:' }).locator('[title]')
+  await expect(decided).toHaveAttribute('title', new RegExp(words.slice(-40)))
+  // Two lines of 20px, whatever the length of the answer.
+  expect((await decided.boundingBox())!.height).toBeLessThanOrEqual(40)
+})
+
 test('6. a failed agent shows its error and a retry; the result is separate and reads Complete', async ({ page, jitter }) => {
   await startRun(page, jitter)
   await expect(badge(page, 'research')).toHaveText('Failed')
@@ -162,8 +177,8 @@ test('Cancel during a retry of a partial result keeps the partial result as it w
   await result.getByRole('button', { name: 'Retry agent' }).click()
   await expect(result.getByText('Retrying...', { exact: true })).toBeVisible()
   await page.getByRole('button', { name: 'Cancel run' }).click()
-  await expect(result.getByRole('heading', { name: 'Partial result' })).toBeVisible()
-  await expect(result.getByText('From before the run was cancelled.')).toBeVisible()
+  await expect(result.getByRole('heading', { name: 'Run cancelled' })).toBeVisible()
+  await expect(result.getByText('This is the result from before the run was cancelled. 1 of 3 agents had failed.')).toBeVisible()
   await expect(result.getByText(/Retrying/)).toHaveCount(0)
 })
 
@@ -173,7 +188,7 @@ test('Cancel run keeps the screen; Run again starts a fresh run', async ({ page,
   const debugRow = () =>
     page.evaluate(() =>
       [...document.querySelectorAll('[aria-label="Mock speed"] button, [role="checkbox"]'), ...document.querySelectorAll('button')]
-        .filter((el) => el.getAttribute('role') === 'checkbox' || /x$|^Event log/.test(el.textContent!.trim()))
+        .filter((el) => el.getAttribute('role') === 'checkbox' || /x$|event log/i.test(el.textContent!.trim()))
         .map((el) => {
           const r = el.getBoundingClientRect()
           return `${r.left},${r.top + window.scrollY}`
@@ -193,7 +208,7 @@ test('Cancel run keeps the screen; Run again starts a fresh run', async ({ page,
 
 test('the event log toggle keeps its place while events stream; the table does not widen', async ({ page, jitter }) => {
   await startRun(page, jitter)
-  const toggle = page.getByRole('button', { name: /^Event log/ })
+  const toggle = page.getByRole('button', { name: /event log \(/i })
   await toggle.click()
   const toggleX = (await toggle.boundingBox())!.x
   await expect(badge(page, 'drafting')).toHaveText('Needs approval')
@@ -203,7 +218,7 @@ test('the event log toggle keeps its place while events stream; the table does n
   await expect(page.getByRole('region', { name: 'Result' }).getByRole('heading', { name: 'Complete' })).toBeVisible()
   expect((await toggle.boundingBox())!.x).toBe(toggleX)
 
-  // A long payload truncates instead of widening the table, also in a narrow window.
+  // A long payload wraps instead of widening the table, also in a narrow window.
   await page.setViewportSize({ width: 800, height: 900 })
   const widths = await page.locator('table').evaluate((table) => ({ table: table.scrollWidth, box: table.parentElement!.clientWidth }))
   expect(widths.table).toBeLessThanOrEqual(widths.box)
@@ -227,6 +242,7 @@ test('form controls keep the card surface when the system is in dark mode', asyn
   await page.emulateMedia({ colorScheme: 'dark' })
   await page.goto('/')
   const fill = (locator: ReturnType<typeof page.locator>) => locator.evaluate((el) => getComputedStyle(el).backgroundColor)
-  expect(await fill(page.getByRole('textbox', { name: 'Request' }))).toBe('rgba(0, 0, 0, 0)')
+  // The text field has the card fill (#fafbfc), not the grey dark:bg-input/30.
+  expect(await fill(page.getByRole('textbox', { name: 'Request' }))).toBe('rgb(250, 251, 252)')
   expect(await fill(page.getByRole('checkbox', { name: 'Jitter' }))).toBe('rgba(0, 0, 0, 0)')
 })

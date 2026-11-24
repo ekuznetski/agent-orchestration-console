@@ -24,7 +24,11 @@ function TraceRow({ row, up, down }: { row: Row; up: Row | null; down: Row | nul
         className={`relative z-10 mt-0.5 size-4 rounded-full ${failed ? 'bg-failed-tint text-failed' : row.kind === 'working' ? 'bg-card text-faint motion-safe:animate-spin' : 'bg-card text-done'}`}
       />
       <span className={row.kind === 'working' ? 'text-muted-foreground' : undefined}>
-        {row.label && <b className="font-semibold">{row.label}:</b>} {row.text}
+        {/* At most two lines, so a long detail (a free-text answer) cannot stretch the card; the full text
+            stays in the tooltip and in the record. */}
+        <span className="line-clamp-2" title={row.label ? `${row.label}: ${row.text}` : row.text}>
+          {row.label && <b className="font-semibold">{row.label}:</b>} {row.text}
+        </span>
         {row.error && <span className="block font-mono text-xs">{row.error}</span>}
       </span>
     </li>
@@ -46,7 +50,11 @@ export function AgentTrace({ agent }: { agent: AgentModel }) {
 
   if (agent.steps.length === 0 && attempts.every((attempt) => attempt.rows.length === 0)) {
     return (
-      <p className="text-muted-foreground px-4 pb-3 text-label leading-5">No steps yet. Steps appear here as the agent reports them.</p>
+      <div className="mx-3 mt-1 mb-3">
+        <p className="text-muted-foreground m-0 px-3 py-3.5 text-label leading-[19px]">
+          No steps yet. Steps appear here as the agent reports them.
+        </p>
+      </div>
     )
   }
 
@@ -79,7 +87,7 @@ export function AgentTrace({ agent }: { agent: AgentModel }) {
         const el = e.currentTarget
         atBottom.current = el.scrollTop + el.clientHeight >= el.scrollHeight - 4
       }}
-      className="mx-1 mb-2 max-h-[400px] overflow-y-auto"
+      className="mx-3 mt-1 mb-3 max-h-[400px] overflow-y-auto rounded-md"
     >
       {groups.map((group) => (
         <div key={group.n}>

@@ -63,7 +63,8 @@ describe('cancel and run again', () => {
     expect(card('scheduling').getByTestId('agent-status-line').textContent).toBe('Last status: Checking calendars')
     expect(panel().getByText('Nothing needs you right now')).toBeTruthy()
     expect(panel().getByText('The run was cancelled.')).toBeTruthy()
-    expect(screen.getByTestId('run-summary').textContent).toContain('Run cancelled')
+    // The moment of the cancel comes before the count: "Run cancelled at M:SS - N of M done".
+    expect(screen.getByTestId('run-summary').textContent).toMatch(/^Run cancelled\s*at \d+:\d\d- 1 of 3 done$/)
     expect(screen.getByRole('button', { name: 'Run again' })).toBeTruthy()
     // No control that sends a command is left, so the manager needs no guard for a missing orchestrator.
     expect(screen.queryByRole('button', { name: /^(Approve|Edit|Send answer|Retry)/ })).toBeNull()
@@ -163,8 +164,8 @@ describe('cancel and run again', () => {
     expect(result.getByText('Retrying...')).toBeTruthy()
 
     fireEvent.click(screen.getByRole('button', { name: 'Cancel run' }))
-    expect(result.getByRole('heading', { name: 'Partial result' })).toBeTruthy()
-    expect(result.getByText('From before the run was cancelled.')).toBeTruthy()
+    expect(result.getByRole('heading', { name: 'Run cancelled' })).toBeTruthy()
+    expect(result.getByText('This is the result from before the run was cancelled. 1 of 3 agents had failed.')).toBeTruthy()
     expect(result.queryByText('Updating')).toBeNull()
     expect(result.queryByText(/Retrying/)).toBeNull()
     expect(result.queryByRole('button', { name: 'Retry agent' })).toBeNull()
@@ -209,7 +210,7 @@ describe('cancel and run again', () => {
   it('announces the phase, counts and need-you politely, but not the ticking clock', () => {
     setup()
     const live = [...screen.getByTestId('run-summary').querySelectorAll('[aria-live="polite"]')].map((el) => el.textContent)
-    expect(live).toEqual(['Running- 1 of 3 done', '1 needs you'])
+    expect(live).toEqual(['Running', '- 1 of 3 done', '1 needs you'])
     expect(live.join(' ')).not.toContain('into the run')
   })
 

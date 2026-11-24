@@ -4,6 +4,7 @@ import { Badge } from '@/components/ui/badge'
 import { resultKindLabel } from '@/config/agentTags'
 import { useConsoleStore } from '@/store/console.store'
 import { canRetryFromResult, isDegraded, isRetryingFromResult } from '@/store/selectors'
+import { useViewStore } from '@/store/view.store'
 import { RetryButton } from './RetryButton'
 
 /** The latest aggregate, above the agents. A newer result replaces it in place; a status newer
@@ -24,15 +25,18 @@ export function ResultBlock() {
   const degraded = isDegraded(result.event)
   // A cancelled run will not update the result: it keeps its own heading, not "Updating".
   const updating = result.outdated && !cancelled
-  const head = updating ? 'Updating' : degraded ? 'Partial result' : 'Complete'
-  const look = updating
-    ? { band: 'bg-muted border-border', ink: 'text-foreground', Icon: LoaderCircle, icon: 'text-foreground motion-safe:animate-spin' }
-    : degraded
-      ? { band: 'bg-failed-tint border-failed', ink: 'text-failed', Icon: CircleX, icon: 'text-failed' }
-      : { band: 'bg-done-tint border-done', ink: 'text-done-ink', Icon: CircleCheck, icon: 'text-done' }
+  const head = cancelled ? 'Run cancelled' : updating ? 'Updating' : degraded ? 'Partial result' : 'Complete'
+  const look = cancelled
+    ? { band: 'bg-muted border-input', ink: 'text-foreground', Icon: CircleX, icon: 'text-muted-foreground' }
+    : updating
+      ? { band: 'bg-muted border-border', ink: 'text-foreground', Icon: LoaderCircle, icon: 'text-foreground motion-safe:animate-spin' }
+      : degraded
+        ? { band: 'bg-failed-tint border-failed', ink: 'text-failed', Icon: CircleX, icon: 'text-failed' }
+        : { band: 'bg-done-tint border-done', ink: 'text-done-ink', Icon: CircleCheck, icon: 'text-done' }
   // One line under the heading, truncated, so a change of note never changes the block's height.
+  const failedCount = result.event.items.filter((item) => item.kind === 'error').length
   const note = cancelled
-    ? 'From before the run was cancelled.'
+    ? `This is the result from before the run was cancelled.${failedCount > 0 ? ` ${failedCount} of ${total} agents had failed.` : ''}`
     : canRetry
       ? 'An agent failed. Retry it to update this result.'
       : anyRetrying
@@ -47,19 +51,21 @@ export function ResultBlock() {
       data-version={result.version}
       className="bg-card shadow-raised flex flex-col overflow-hidden rounded-lg border border-input"
     >
-      <div className={`border-b px-5 pt-5 pb-4 ${look.band}`}>
-        <div className="flex items-center gap-3">
-          <look.Icon aria-hidden="true" strokeWidth={1.5} className={`size-9 shrink-0 ${look.icon}`} />
+      <div className={`border-b px-6 pt-6 pb-[22px] ${look.band}`}>
+        <div className="flex items-center gap-3.5">
+          <look.Icon aria-hidden="true" strokeWidth={1.5} className={`size-10 shrink-0 ${look.icon}`} />
           <div className="min-w-0">
             <h2 className={`text-heading font-semibold tracking-[-0.01em] ${look.ink}`}>{head}</h2>
             {note && (
-              <p className={`truncate text-sm ${look.ink}`} title={note}>
+              <p className={`truncate text-sm leading-5 ${look.ink}`} title={note}>
                 {note}
               </p>
             )}
           </div>
         </div>
-        <p className={`mt-4 text-xl font-medium ${updating ? 'text-muted-foreground' : ''}`}>{result.event.summary}</p>
+        <p className={`mt-[18px] mb-0 max-w-[64ch] text-xl leading-[30px] font-medium ${updating ? 'text-muted-foreground' : ''}`}>
+          {result.event.summary}
+        </p>
       </div>
       <ul className={`m-0 list-none px-4 pt-1 pb-3 ${updating ? 'opacity-60' : ''}`}>
         {result.event.items.map((item) => (
@@ -75,32 +81,49 @@ function ResultItem({ item }: { item: ResultEvent['items'][number] }) {
   const label = useConsoleStore((state) => state.agents[item.agentId].label)
   const retryable = useConsoleStore((state) => item.kind === 'error' && canRetryFromResult(state, item.agentId))
   const retrying = useConsoleStore((state) => item.kind === 'error' && isRetryingFromResult(state, item.agentId))
+  const openRecord = useViewStore((state) => state.openRecord)
+  const error = item.kind === 'error'
   return (
-    <li className="grid grid-cols-[7.5rem_minmax(0,1fr)] gap-x-4 border-t py-3 first:border-t-0">
-      <div className="flex flex-col">
-        <span className={`text-xs font-semibold ${item.kind === 'error' ? 'text-failed' : 'text-muted-foreground'}`}>
+    <li className={`grid grid-cols-[148px_minmax(0,1fr)] gap-x-4 gap-y-1 border-t py-3 ${error ? 'bg-failed-tint -mx-4 px-4' : ''}`}>
+      <div className="flex flex-col items-start">
+        <span className={`text-xs leading-[19px] font-semibold ${error ? 'text-failed' : 'text-muted-foreground'}`}>
           {resultKindLabel(item.kind)}
         </span>
-        <span className="text-faint text-xs">{label}</span>
+        {error ? (
+          <span className="text-faint text-xs">{label}</span>
+        ) : (
+          // The agent's label opens its record in the panel.
+          <button
+            type="button"
+            className="text-faint decoration-input hover:decoration-foreground text-left text-xs underline underline-offset-2"
+            onClick={() => openRecord(item.agentId)}
+          >
+            {label}
+          </button>
+        )}
       </div>
-      <div className="flex flex-col text-sm">
-        <b className={`font-semibold ${item.kind === 'error' ? 'text-failed' : ''}`}>{item.title}</b>
-        <span>{item.detail}</span>
-        {item.sources && item.sources.length > 0 && (
-          <div className="mt-2 flex flex-wrap gap-1.5">
-            {item.sources.map((source) => (
-              <Badge key={source} variant="outline" className="bg-card text-muted-foreground">
-                {source}
-              </Badge>
-            ))}
+      <div className="flex items-start justify-between gap-4">
+        <div className="flex min-w-0 flex-col text-sm leading-[21px]">
+          <b className={`font-semibold ${error ? 'text-failed' : ''}`}>{item.title}</b>
+          <span>{item.detail}</span>
+          {item.sources && item.sources.length > 0 && (
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {item.sources.map((source) => (
+                <Badge key={source} variant="outline" className="bg-card text-muted-foreground">
+                  {source}
+                </Badge>
+              ))}
+            </div>
+          )}
+        </div>
+        {/* Retry sits to the right of the error, as on the boards. The slot has a fixed width, so "Retrying..."
+            taking the button's place does not rewrap the text beside it. */}
+        {error && (
+          <div className="flex w-28 shrink-0 justify-end">
+            {retryable && <RetryButton agentId={item.agentId} label="Retry agent" />}
+            {retrying && <span className="text-muted-foreground flex h-9 items-center text-sm">Retrying...</span>}
           </div>
         )}
-        {retryable && (
-          <div className="pt-2">
-            <RetryButton agentId={item.agentId} label="Retry agent" />
-          </div>
-        )}
-        {retrying && <div className="text-muted-foreground flex h-11 items-center pt-2">Retrying...</div>}
       </div>
     </li>
   )

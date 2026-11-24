@@ -253,7 +253,7 @@ Component-local state: open trace (`AgentCard`), open event log (`TopBar`), the 
 - Run line (the run counts as working from an accepted Retry until the agent settles again, so Cancel run shows and
   the debug controls lock during that span): while the run works "M:SS into the run", "Running - N of M done", "K need you" and, on the right, "The
   result appears above the agents when the run ends"; once it ends a state badge (Completed, Partial result, Run
-  cancelled), "N of M done" and "took M:SS" (or "at M:SS" for a cancel). The line has a fixed height, so the
+  cancelled), "N of M done" and "took M:SS"; a cancel reads "Run cancelled at M:SS - N of M done". The line has a fixed height, so the
   badge replacing the plain word does not move what is below.
 - Status tones: colour means state only. Amber (`needs`, `needs-edge`, `needs-bar`) is "needs you" (approval or
   answer), red (`failed`, `failed-tint`) is failed, teal (`done`, `done-tint`, `done-ink`) is done; running,
@@ -270,22 +270,25 @@ Component-local state: open trace (`AgentCard`), open event log (`TopBar`), the 
   border. No top stripe. The selected card (its decision, outcome or record is in the panel) is raised
   (`shadow-raised`) and joined to the panel by a connector in its state colour; no ring, no outline, no size or
   border change. The trace is a numbered timeline (numbers run across attempts, a check icon per step on a teal
-  line that turns red into the failure row, which shows its status line verbatim; "Attempt N" headers).
+  line that turns red into the failure row, which shows its status line verbatim; "Attempt N" headers). Each row's text is clamped to two lines, with the full
+  text in its tooltip, so a long free-text answer ("You chose: ...") cannot stretch the card; the text stays
+  verbatim and the record shows it whole.
 - Decision panel: a card with a 3px left edge in the colour of what it shows (amber decision, red failure, teal
   outcome (neutral after an edit), the agent's colour for a record, neutral when empty) and a header with "K need you". Each decision
   or outcome is a `Frame`: a band with the agent's label and the question (amber for approvals and questions,
-  red for a failure, teal for an outcome whose action happened, neutral for a submitted edit, which sends nothing), the body, and a footer bar with the actions, pinned to the bottom of the
+  red for a failure, teal for an outcome whose action happened, neutral for a submitted edit, which sends nothing; the title stays in the text colour and only a failure colours the agent's label), the body, and a footer bar with the actions, pinned to the bottom of the
   panel card (minimum height 420px, so the footer does not jump between states). Under an outcome the footer holds
   "Next decision: <agent label>" on the right, or "Nothing else needs you right now." in the same fixed height.
-- Form controls (Input, Textarea, Checkbox, RadioGroup, the speed toggle) are the shadcn components on the
-  surface they sit on (transparent fill over the card), with the `input` border and the `ring` focus ring.
+- Form controls (Input, Textarea, Checkbox, RadioGroup, the speed toggle) are the shadcn components as on the
+  boards: the card fill, the `input` border, a 5px radius (`rounded-md`), `shadow-xs` and the `ring` focus
+  ring; a checked radio keeps the card fill with a primary border and a primary dot.
   `dark:` applies only under a `.dark` class, which the app never sets, so a system dark mode does not grey-fill
   them (e2e checks this with a dark colour scheme).
 - Disabled: Base UI's Checkbox marks itself with `data-disabled`, not `:disabled`, so a Label holding a disabled
   control dims as a whole (`has-data-disabled:opacity-50`); the locked Jitter during a run looks disabled like
   the speed buttons (e2e checks its opacity).
 - Question: options are bordered rows; the chosen one keeps the 1px width with the primary border and a light
-  muted fill. "Or answer in your own words" is a 4-line Textarea; holding the answer it gets the primary border.
+  muted fill. "Or answer in your own words" is a Textarea of at least 120px, without a placeholder; holding the answer it gets the primary border.
 - Buttons: primary actions use the primary variant everywhere (Approve, Save, Send answer, Retry, Next
   decision, Run again); secondary actions the outline variant. Colour belongs to bands, badges and the effect
   line, not to buttons.
@@ -293,17 +296,33 @@ Component-local state: open trace (`AgentCard`), open event log (`TopBar`), the 
   irreversible in the failed red, reversible, read only and unknown classes in the normal text colour.
   Reason: the warning sits where the eye and the cursor are at the moment of clicking, not above the draft.
   Questions have no effect line.
-- Result: a band with an icon, the heading (Complete, Partial result, Updating) and one truncated note line
-  ("All N agents finished", the retry notes, "From before the run was cancelled."), then the summary; items
-  in a two-column list with the kind and the agent's label on the left and sources as outline badges.
+- Result: a band with an icon, the heading (Complete, Partial result, Updating, Run cancelled in a neutral band)
+  and one truncated note line ("All N agents finished", the retry notes, "This is the result from before the run
+  was cancelled. K of N agents had failed."), then the summary (at most 64ch); items in a two-column list (148px
+  for the kind and the agent's label, which opens the agent's record; an error item is tinted red with its
+  Retry on the right) and sources as outline badges.
+- Debug row: speed 0.25x / 0.5x / 1x / 4x, Jitter, and the toggle "Event log (N)" / "Hide event log (N)".
 - Event log: inside the run card; "N events received - K arrived late", Copy JSON, and a table with #, seq
-  (with a "late" mark), type, agent and detail; late rows amber, failure rows red.
+  (with a "late" mark), time (UTC, to the millisecond), type, agent and detail ("state - status line",
+  "act - detail", "N agents: types" for the plan), muted and wrapping; late rows amber, failure rows red.
 - Where the app differs from the boards, on purpose: the result sits above the agents in the left column, not
   across the page, because a block across both columns would push the decision panel down when it arrives
   (panel rule); the panel keeps the outcome after the run ends instead of "Nothing needs you" (an outcome stays
   until the user moves); the outcome shows what was sent and the agent now, not a timeline; the debug row
   keeps Jitter and the event log count, and "Speed is set before a run" keeps its space when hidden; done cards
-  keep "Details in the panel" (the record); Retry is primary, not red (button rule above).
+  keep "Details in the panel" (the record); Retry is primary, not red (button rule above). Also:
+  - every card keeps its footer link ("Details in the panel" while running, too) instead of "Attempt N": it
+    is the keyboard and screen reader path to the panel; the attempt shows in the trace headers and the record;
+  - the failure row of the trace shows the mock's status line verbatim ("Failed - ..." as sent), not a
+    "Failed:" label with the prefix cut (texts from the mock are verbatim);
+  - the card status line is one line with the full text in its tooltip, also for "Last status: ..." of a
+    cancelled agent, so a long line never changes the card's height;
+  - the open event log shows every event at full height with the page scrolling, not a 600px box, as the owner
+    asked; it is a debug view;
+  - the cancelled result band has no Run again of its own: the run card holds the one Run again;
+  - the Complete note reads "All N agents finished" without "took M:SS": the run line shows the time once;
+  - the chosen option keeps a 1px primary border with a muted fill instead of a 1px ring, and the effect line
+    is normal size (both above).
 
 ## 7. Data flow of one decision
 

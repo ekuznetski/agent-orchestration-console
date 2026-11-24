@@ -13,7 +13,7 @@ import { EventLog } from './EventLog'
 import { Spinner } from '@/components/ui/spinner'
 import { StatusBadge } from './StatusBadge'
 
-const SPEEDS = [0.25, 0.5, 1, 2, 4]
+const SPEEDS = [0.25, 0.5, 1, 4]
 
 const SUMMARY: Record<Phase, string> = {
   idle: 'Starting',
@@ -77,7 +77,7 @@ function DebugRow({ locked, logOpen, onToggleLog }: { locked: boolean; logOpen?:
           aria-expanded={logOpen}
           onClick={onToggleLog}
         >
-          Event log ({logSize})
+          {logOpen ? 'Hide event log' : 'Event log'} ({logSize})
         </Button>
       )}
     </div>
@@ -181,6 +181,7 @@ export function TopBar() {
   const setRequest = useViewStore((state) => state.setRequest)
   const [logOpen, setLogOpen] = useState(false)
   const active = isActive(header.phase)
+  const cancelled = header.phase === 'cancelled'
   const startedAt = useConsoleStore((state) => state.startedAt)
   const clockRun = useViewStore((state) => state.clockRun)
   const clockStop = useViewStore((state) => state.clockStop)
@@ -231,9 +232,13 @@ export function TopBar() {
         {/* Announced politely when they change; the ticking clock stays outside the live regions. */}
         <span aria-live="polite" className="contents">
           <PhaseWord phase={header.phase} />
+        </span>
+        {/* A cancel reads "at M:SS - N of M done": the moment of the cancel comes before the count. */}
+        {startedAt !== null && cancelled && <Elapsed phase={header.phase} />}
+        <span aria-live="polite" className="contents">
           {header.total > 0 && (
-            <span className={active ? undefined : 'ml-1.5'}>
-              {active && '- '}
+            <span className={active || cancelled ? undefined : 'ml-1.5'}>
+              {(active || cancelled) && '- '}
               <b>
                 {header.done} of {header.total}
               </b>{' '}
@@ -241,7 +246,7 @@ export function TopBar() {
             </span>
           )}
         </span>
-        {startedAt !== null && !active && <Elapsed phase={header.phase} />}
+        {startedAt !== null && !active && !cancelled && <Elapsed phase={header.phase} />}
         <span aria-live="polite" className="contents">
           {header.needYou > 0 && (
             <span className="ml-2">
