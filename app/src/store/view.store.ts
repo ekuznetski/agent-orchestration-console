@@ -6,6 +6,8 @@ export interface Receipt {
   kind: 'approve' | 'resolve' | 'retry'
   /** The answer text sent with resolve. */
   answer?: string
+  /** The attempt a retry started. */
+  attempt?: number
   /** Agents that were waiting when the user acted; auto-advance only goes to one of these. */
   waitingAtAction: string[]
 }

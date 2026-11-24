@@ -53,7 +53,7 @@ function DebugRow({ locked, logOpen, onToggleLog }: { locked: boolean; logOpen?:
         onValueChange={(value) => value[0] && setSpeed(Number(value[0]))}
       >
         {SPEEDS.map((s) => (
-          <ToggleGroupItem key={s} value={String(s)} className="h-6 px-2 text-xs">
+          <ToggleGroupItem key={s} value={String(s)} className="aria-pressed:text-foreground h-6 px-2 text-xs aria-pressed:font-semibold">
             {s}x
           </ToggleGroupItem>
         ))}
@@ -125,7 +125,10 @@ export function TopBar() {
       <div className="flex flex-col gap-1.5 px-3.5 py-2.5">
         <div className="flex items-center gap-2">
           {active ? (
-            <div className="bg-muted text-muted-foreground flex-1 truncate rounded-md border px-2 py-1.5" title={task ?? request}>
+            <div
+              className="bg-muted text-muted-foreground h-9 flex-1 truncate rounded-md border px-2 leading-[34px]"
+              title={task ?? request}
+            >
               {task ?? request}
             </div>
           ) : (
@@ -134,7 +137,7 @@ export function TopBar() {
               rows={1}
               value={request}
               onChange={(e) => setRequest(e.target.value)}
-              className="min-h-0 flex-1 resize-none py-1.5"
+              className="h-9 min-h-0 flex-1 resize-none py-1.5"
             />
           )}
           {active ? (

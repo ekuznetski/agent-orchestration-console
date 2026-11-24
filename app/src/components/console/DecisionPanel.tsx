@@ -1,146 +1,183 @@
-import { useEffect, type ReactNode } from 'react'
-import type { ConfirmationRequiredEvent, EscalationRequiredEvent } from '@mock/orchestrator.js'
+import { useEffect, useState } from 'react'
+import type { EscalationRequiredEvent } from '@mock/orchestrator.js'
 import { Button } from '@/components/ui/button'
-import { TAGS, actionLabels, agentType, effectClassLabel, toneColor } from '@/config/agentTags'
+import { TAGS, actionLabels, agentType, toneColor } from '@/config/agentTags'
 import type { AgentModel } from '@/store/console.reducer'
 import { useConsoleStore } from '@/store/console.store'
-import { useDecisionQueue, useShownDecision } from '@/store/hooks'
-import { phaseOf } from '@/store/selectors'
-import { useViewStore } from '@/store/view.store'
+import { useDecisionQueue, useShownDecision, useVisibleReceipt } from '@/store/hooks'
+import { pendingCommand, phaseOf, waitingQueue } from '@/store/selectors'
+import { useViewStore, type Receipt } from '@/store/view.store'
+import { ConfirmationDecision, FailureDecision, QuestionDecision, answerText, type Act } from './DecisionViews'
 
-const Row = ({ label, children, className }: { label: string; children: ReactNode; className?: string }) => (
-  <>
-    <span className="text-muted-foreground">{label}</span>
-    <span className={className}>{children}</span>
-  </>
-)
-
-function ConfirmationView({ gate, revision }: { gate: ConfirmationRequiredEvent; revision: number }) {
-  const labels = actionLabels(gate.action)
-  const effect = effectClassLabel(gate.effectClass)
-  const { subject, body, ...rest } = gate.draft
-  return (
-    <div className="flex flex-col gap-2.5">
-      <h3 className="text-[15px] font-bold">{revision > 1 ? labels.editedTitle : labels.title}</h3>
-      <div className="grid grid-cols-[5rem_minmax(0,1fr)] gap-x-2.5 gap-y-1">
-        <Row label="To">{gate.target}</Row>
-        {subject !== undefined && <Row label="Subject">{subject}</Row>}
-        {Object.entries(rest).map(([key, value]) => (
-          <Row key={key} label={key}>
-            {typeof value === 'string' ? value : JSON.stringify(value)}
-          </Row>
-        ))}
-      </div>
-      {body !== undefined && <div className="bg-muted max-h-[220px] overflow-auto rounded-sm border p-2 whitespace-pre-wrap">{body}</div>}
-      <p className="text-xs" style={{ color: toneColor(effect.tone) }}>
-        {effect.label}: {effect.note}
-      </p>
-    </div>
-  )
-}
-
-function QuestionView({ gate }: { gate: EscalationRequiredEvent }) {
-  return (
-    <div className="flex flex-col gap-2.5">
-      <h3 className="text-[15px] font-bold">{gate.question}</h3>
-      <p className="text-muted-foreground">{gate.context}</p>
-      <ul className="flex flex-col gap-1.5">
-        {gate.options.map((option) => (
-          <li key={option.id} className="rounded-sm border px-2 py-1.5">
-            <b>{option.label}</b>
-            {option.detail && <div className="text-muted-foreground">{option.detail}</div>}
-          </li>
-        ))}
-      </ul>
-    </div>
-  )
-}
-
-function FailureView({ agent }: { agent: AgentModel }) {
-  const attempt = agent.attempts[agent.attempts.length - 1]
-  return (
-    <div className="flex flex-col gap-2.5">
-      <h3 className="text-[15px] font-bold">Retry this agent?</h3>
-      <div className="grid grid-cols-[5rem_minmax(0,1fr)] gap-x-2.5 gap-y-1">
-        <Row label="Status">{agent.status?.statusLine}</Row>
-        {agent.status?.error && (
-          <Row label="Error" className="font-mono">
-            <span style={{ color: 'var(--tone-danger)' }}>{agent.status.error.message}</span>
-          </Row>
-        )}
-      </div>
-      <p className="text-muted-foreground">Retry starts attempt {attempt.n + 1}.</p>
-    </div>
-  )
-}
+const AUTO_ADVANCE_MS = 3000
 
 function emptyLine(phase: ReturnType<typeof phaseOf>, allQueued: boolean): string {
   if (phase === 'idle' || allQueued) return 'The agents are starting. New decisions open here.'
-  if (phase === 'running') return 'New decisions open here when an agent asks.'
+  if (phase === 'running') return 'Agents keep working. New decisions open here.'
   if (phase === 'finishing') return 'The agents are done. The result appears above the agents.'
   if (phase === 'cancelled') return 'The run was cancelled.'
   return 'The run is finished. The result is above the agents.'
+}
+
+/** What the decision asks, in a few words: used for "Up next". */
+function decisionTitle(agent: AgentModel): string {
+  if (agent.tag === 'failed') return 'Retry this agent?'
+  const event = agent.gate!.event
+  if (event.type === 'escalation_required') return event.question
+  const labels = actionLabels(event.action)
+  return agent.gate!.revision > 1 ? labels.editedTitle : labels.title
+}
+
+function EmptyState() {
+  const phase = useConsoleStore(phaseOf)
+  const allQueued = useConsoleStore((state) => (state.plan?.order ?? []).every((id) => state.agents[id].tag === 'queued'))
+  return (
+    <div className="text-muted-foreground flex flex-col gap-1 pt-8 text-center">
+      <b className="text-foreground text-sm">Nothing needs you right now</b>
+      <span>{emptyLine(phase, allQueued)}</span>
+    </div>
+  )
+}
+
+/** What happened after approve, answer or retry, plus what is up next. */
+function ReceiptView({ receipt, onNext }: { receipt: Receipt; onNext: (id: string) => void }) {
+  const agent = useConsoleStore((state) => state.agents[receipt.agentId])
+  const next = useConsoleStore((state) => waitingQueue(state).find((id) => id !== receipt.agentId) ?? null)
+  const nextAgent = useConsoleStore((state) => (next ? state.agents[next] : null))
+
+  const title =
+    receipt.kind === 'approve'
+      ? 'Approved'
+      : receipt.kind === 'resolve'
+        ? `Answer sent: ${receipt.answer}`
+        : `Retried - attempt ${receipt.attempt} is running`
+
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="bg-muted flex flex-col gap-0.5 rounded-md px-3.5 py-3" role="status">
+        <b style={{ color: 'var(--tone-success)' }}>{title}</b>
+        <span className="text-muted-foreground">{agent.label} continues; its card on the left shows what it does next.</span>
+      </div>
+      {nextAgent ? (
+        <div className="flex flex-col gap-2 border-t pt-2">
+          <span>
+            Up next: <b>{agentType(nextAgent.type).name}</b> - {decisionTitle(nextAgent)}
+          </span>
+          <div className="flex items-center gap-2">
+            <Button onClick={() => onNext(nextAgent.id)}>Next: {agentType(nextAgent.type).name}</Button>
+            {receipt.waitingAtAction.includes(nextAgent.id) && <span className="text-muted-foreground">opens in 3 s</span>}
+          </div>
+        </div>
+      ) : (
+        <EmptyState />
+      )}
+    </div>
+  )
 }
 
 /** One decision at a time, "N of M", Prev / Next. The decision on screen stays pinned until the user moves. */
 export function DecisionPanel() {
   const queue = useDecisionQueue()
   const shownId = useShownDecision()
+  const receipt = useVisibleReceipt()
   const selectedId = useViewStore((state) => state.selectedId)
+  const answers = useViewStore((state) => state.answers)
   const select = useViewStore((state) => state.select)
   const pin = useViewStore((state) => state.pin)
+  const setReceipt = useViewStore((state) => state.setReceipt)
   const agent = useConsoleStore((state) => (shownId ? state.agents[shownId] : null))
-  const phase = useConsoleStore(phaseOf)
-  const allQueued = useConsoleStore((state) => (state.plan?.order ?? []).every((id) => state.agents[id].tag === 'queued'))
+  const [refusedId, setRefusedId] = useState<string | null>(null)
 
   // Pin what is shown, so a decision that arrives later with a lower seq never takes its place.
   useEffect(() => {
     if (shownId && shownId !== selectedId) pin(shownId)
   }, [shownId, selectedId, pin])
 
+  // After a receipt, open the next decision by itself, but only one that was already waiting when the user acted.
+  useEffect(() => {
+    if (!receipt) return
+    const timer = setTimeout(() => {
+      const next = waitingQueue(useConsoleStore.getState()).find((id) => id !== receipt.agentId && receipt.waitingAtAction.includes(id))
+      if (next) useViewStore.getState().select(next)
+    }, AUTO_ADVANCE_MS)
+    return () => clearTimeout(timer)
+  }, [receipt])
+
+  const move = (id: string) => {
+    setRefusedId(null)
+    select(id)
+  }
+
+  const act: Act = (agentId, send, done) => {
+    const waitingAtAction = waitingQueue(useConsoleStore.getState()).filter((id) => id !== agentId)
+    const accepted = send()
+    setRefusedId(accepted ? null : agentId)
+    if (accepted && done) setReceipt({ agentId, waitingAtAction, ...done })
+    return accepted
+  }
+
+  // Going back to a decision whose command is still pending shows its receipt, rebuilt from the model.
+  const pending = agent ? pendingCommand(agent) : null
+  const rebuilt: Receipt | null =
+    agent && pending && pending.kind !== 'edit'
+      ? {
+          agentId: agent.id,
+          kind: pending.kind,
+          answer:
+            pending.kind === 'resolve'
+              ? (answerText(agent.gate!.event as EscalationRequiredEvent, answers[agent.id]) ?? undefined)
+              : undefined,
+          attempt: agent.attempts[agent.attempts.length - 1].n + 1,
+          waitingAtAction: [],
+        }
+      : null
+  const shownReceipt = receipt ?? rebuilt
+
   const index = shownId ? queue.indexOf(shownId) : -1
-  const tone = agent ? TAGS[agent.tag].tone : null
+  const edge = receipt ? 'var(--tone-success)' : agent ? toneColor(TAGS[agent.tag].tone) : 'transparent'
 
   return (
     <aside
       aria-label="Decisions waiting for you"
+      // Any next user action in the panel clears a refused-command message; the action itself may set it again.
+      onClickCapture={() => setRefusedId(null)}
+      onChangeCapture={() => setRefusedId(null)}
       className="flex min-h-0 flex-col gap-2.5 overflow-y-auto border-l-[3px] p-3.5"
-      style={{ borderLeftColor: tone ? toneColor(tone) : 'transparent' }}
+      style={{ borderLeftColor: edge }}
     >
       <div className="flex items-center justify-between gap-2">
         <h2 className="text-sm font-bold">Decisions waiting for you</h2>
-        {agent && (
+        {agent && !receipt && (
           <div className="text-muted-foreground flex items-center gap-1.5">
-            <Button variant="outline" size="sm" disabled={index <= 0} onClick={() => select(queue[index - 1])}>
+            <Button variant="outline" size="sm" disabled={index <= 0} onClick={() => move(queue[index - 1])}>
               Prev
             </Button>
             <span>
               {index + 1} of {queue.length}
             </span>
-            <Button variant="outline" size="sm" disabled={index >= queue.length - 1} onClick={() => select(queue[index + 1])}>
+            <Button variant="outline" size="sm" disabled={index >= queue.length - 1} onClick={() => move(queue[index + 1])}>
               Next
             </Button>
           </div>
         )}
       </div>
-      {agent ? (
+      {shownReceipt ? (
+        <ReceiptView receipt={shownReceipt} onNext={move} />
+      ) : agent ? (
         <>
           <div className="text-muted-foreground">
             {agentType(agent.type).name} - {agent.label}
           </div>
           {agent.tag === 'failed' ? (
-            <FailureView agent={agent} />
+            <FailureDecision agent={agent} />
           ) : agent.gate?.event.type === 'confirmation_required' ? (
-            <ConfirmationView gate={agent.gate.event} revision={agent.gate.revision} />
+            <ConfirmationDecision agent={agent} gate={agent.gate} refused={refusedId === agent.id} act={act} />
           ) : agent.gate?.event.type === 'escalation_required' ? (
-            <QuestionView gate={agent.gate.event} />
+            <QuestionDecision agent={agent} gate={agent.gate} refused={refusedId === agent.id} act={act} />
           ) : null}
         </>
       ) : (
-        <div className="text-muted-foreground flex flex-col gap-1 pt-8 text-center">
-          <b className="text-foreground text-sm">Nothing needs you right now</b>
-          <span>{emptyLine(phase, allQueued)}</span>
-        </div>
+        <EmptyState />
       )}
     </aside>
   )

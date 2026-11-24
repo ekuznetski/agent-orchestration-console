@@ -29,12 +29,18 @@ const ACTS: Record<string, string> = { searched: 'Searched', read: 'Read', decid
 
 export const actLabel = (act: string): string => ACTS[act] ?? act
 
-const ACTIONS: Record<string, { title: string; editedTitle: string; approve: string; edit: string }> = {
+const ACTIONS: Record<
+  string,
+  { title: string; editedTitle: string; approve: string; edit: string; editTitle: string; editNote: string; bodyLabel: string }
+> = {
   send_email: {
     title: 'Send this email?',
     editedTitle: 'Send the edited email?',
     approve: 'Approve and send',
     edit: 'Edit email',
+    editTitle: 'Edit the email',
+    editNote: 'Nothing is sent yet. You approve the edited email next.',
+    bodyLabel: 'Message',
   },
 }
 
@@ -44,6 +50,9 @@ export const actionLabels = (action: string) =>
     editedTitle: 'Approve the edited action?',
     approve: 'Approve',
     edit: 'Edit',
+    editTitle: 'Edit the draft',
+    editNote: 'Nothing happens yet. You approve the edited version next.',
+    bodyLabel: 'Body',
   }
 
 const RESULT_KINDS: Record<string, string> = {

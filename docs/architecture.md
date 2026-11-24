@@ -217,6 +217,7 @@ rules).
 | `subscription.test.ts` | The manager against a fake orchestrator (the real mock is never loaded): subscribe before start asserted directly, speed and jitter passed, a second start stops the previous run, commands recorded only when accepted, `afterSeq` read before the call, a pending command not sent again, what `start`, `cancel` and `reset` clear. |
 | `AgentList.test.tsx` | N agents give N cards, a fourth agent type, a card updated in place, trace order with the late step, the empty trace, Done kept after the late step. |
 | `PanelSelection.test.ts` | Which decision the panel shows, the receipt hidden after the run ends with an empty queue, receipt first in `shownDecisionNow`, `select` vs `pin`. |
+| `Actions.test.tsx` | Against a fake orchestrator: approve and its receipt, a double click sent once, the receipt shown again for a pending command, edit with kept text and re-approval, an unknown action, answers by option and by own words, retry from the panel and from a partial result, a refused command and its clearing, auto-advance only to a decision waiting at action time. |
 | `mockAlias.test.ts` | The `@mock` alias loads the real mock (the only unit test that touches it). |
 | `e2e/pageLoads.e2e.ts` | The page loads in a real browser. |
 
@@ -224,7 +225,6 @@ Planned, added as they land:
 
 | Suite | Covers |
 | --- | --- |
-| `Actions.test.tsx` | Approve, edit and re-approval, kept edit text, resolve, retry, refused commands, a retry from a card next to another agent's receipt. |
 | `ModelError.test.tsx` | A handler that throws sets `modelError`, the top bar warns, and the store keeps applying later events. |
 | `CancelledRun`, `AppErrorFallback` tests | Cancelled screen, the error fallback (with a stub reset, not the real manager). |
 | `e2e/definition-of-done.e2e.ts` | Each Definition-of-done item from the task text in a real browser with the real mock, plus a partial result retried from the result and Run again; run once without and once with jitter. |
