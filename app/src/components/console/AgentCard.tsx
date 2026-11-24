@@ -12,21 +12,24 @@ export function AgentCard({ id }: { id: string }) {
   const inQueue = useConsoleStore((state) => state.status !== 'cancelled' && needsUser(state.agents[id]))
   const shown = useIsShown(id)
   const select = useViewStore((state) => state.select)
+  const openRecord = useViewStore((state) => state.openRecord)
+  // An agent with an open decision shows that decision; any other agent opens its record.
+  const openInPanel = () => (inQueue ? select(id) : openRecord(id))
   const [open, setOpen] = useState(false)
 
   const tag = TAGS[agent.tag]
   const color = toneColor(tag.tone)
   const line = statusLineOf(agent) ?? ''
-  const foot = inQueue ? (agent.tag === 'failed' ? 'Retry in the panel' : 'Decision in the panel') : ''
-  const selected = shown && inQueue
+  const foot = inQueue ? (agent.tag === 'failed' ? 'Retry in the panel' : 'Decision in the panel') : 'Details in the panel'
+  const selected = shown
 
   return (
     <div
       data-testid={`agent-card-${id}`}
       // The whole card is a mouse shortcut; the footer button is the keyboard and screen reader path,
       // so no interactive element is nested inside another.
-      onClick={inQueue ? () => select(id) : undefined}
-      className={`bg-card relative flex flex-col gap-1 rounded-md border border-t-[3px] px-3 py-2.5 ${inQueue ? 'cursor-pointer' : ''}`}
+      onClick={openInPanel}
+      className="bg-card relative flex cursor-pointer flex-col gap-1 rounded-md border border-t-[3px] px-3 py-2.5"
       style={{ borderTopColor: color, boxShadow: selected ? `0 0 0 2px ${color}` : undefined }}
     >
       {selected && <span aria-hidden="true" className="absolute top-1/2 -right-3.5 w-3.5 border-t-2" style={{ borderColor: color }} />}
@@ -62,7 +65,7 @@ export function AgentCard({ id }: { id: string }) {
             aria-pressed={selected}
             onClick={(e) => {
               e.stopPropagation()
-              select(id)
+              openInPanel()
             }}
           >
             {foot}

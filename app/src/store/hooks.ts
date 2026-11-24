@@ -32,21 +32,25 @@ export function useShownDecision(): string | null {
   return pickShown(queue, selectedId)
 }
 
+/** Receipts show only in decisions mode. */
 export function useVisibleReceipt(): Receipt | null {
-  const receipt = useViewStore((state) => state.receipt)
+  const receipt = useViewStore((state) => (state.mode === 'decisions' ? state.receipt : null))
   return useConsoleStore((state) => visibleReceipt(state, receipt))
 }
 
-/** Whether the panel is about this agent: the receipt's agent first, then the shown decision. */
+/** Whether the panel is about this agent: the open record's agent in agent mode, otherwise the receipt's
+ * agent first, then the shown decision. */
 export function useIsShown(id: string): boolean {
+  const recordId = useViewStore((state) => (state.mode === 'agent' ? state.recordId : null))
   const receipt = useVisibleReceipt()
   const shown = useShownDecision()
-  return (receipt?.agentId ?? shown) === id
+  return (recordId ?? receipt?.agentId ?? shown) === id
 }
 
 /** The same answer as useIsShown, read at call time (for click handlers). */
 export function shownDecisionNow(): string | null {
   const state = useConsoleStore.getState()
   const view = useViewStore.getState()
+  if (view.mode === 'agent') return view.recordId
   return visibleReceipt(state, view.receipt)?.agentId ?? pickShown(decisionQueue(state), view.selectedId)
 }

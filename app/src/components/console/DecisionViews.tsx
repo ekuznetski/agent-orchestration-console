@@ -171,7 +171,7 @@ export function QuestionDecision({ agent, gate, refused, act }: { agent: AgentMo
   const text = answerText(event, answer)
 
   const send = () => {
-    const choice = usesWords ? words.trim() : optionId!
+    const choice = usesWords ? { words: words.trim() } : { optionId: optionId! }
     act(agent.id, () => resolve(agent.id, choice), { kind: 'resolve', answer: text! })
   }
 

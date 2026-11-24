@@ -52,12 +52,14 @@ const escalation = (agentId: string) =>
     options: [],
   })
 // afterSeq is the newest seq so far, which is at least the agent's own maxSeq when the command is sent.
-const sent = (agentId: string, kind: 'approve' | 'edit' | 'resolve' | 'retry'): ConsoleEvent => ({
-  type: 'command_sent',
-  agentId,
-  kind,
-  afterSeq: seq,
-})
+const PAYLOAD = {
+  approve: { action: 'send_email', target: 't', revision: 1, draft: {} },
+  edit: { draft: {} },
+  resolve: { label: 'Answer' },
+  retry: { attempt: 2 },
+}
+const sent = (agentId: string, kind: 'approve' | 'edit' | 'resolve' | 'retry'): ConsoleEvent =>
+  ({ type: 'command_sent', agentId, kind, afterSeq: seq, ...PAYLOAD[kind] }) as ConsoleEvent
 
 describe('runHeader and phaseOf', () => {
   it('reports a finished run as completed with everything done', () => {

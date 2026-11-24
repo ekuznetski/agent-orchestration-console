@@ -2,17 +2,28 @@ import type {
   AgentStatusEvent,
   AgentStepEvent,
   ConfirmationRequiredEvent,
+  Draft,
   EscalationRequiredEvent,
   EventOf,
   OrchestratorEvent,
   ResultEvent,
 } from '@mock/orchestrator.js'
 
-export type CommandKind = 'approve' | 'edit' | 'resolve' | 'retry'
+/** What a command actually sent, recorded only when the handler returned true. */
+export type Sent =
+  | { kind: 'approve'; action: string; target: string; revision: number; draft: Draft }
+  | { kind: 'edit'; draft: Draft }
+  /** The picked option (optionId and its label), or the typed words as the label. */
+  | { kind: 'resolve'; optionId?: string; label: string }
+  | { kind: 'retry'; attempt: number }
+
+export type CommandKind = Sent['kind']
+
+/** An accepted command. afterSeq is the agent's maxSeq when it was sent; its next event answers it. */
+export type Action = Sent & { afterSeq: number }
 
 /** Events the console itself dispatches; they never come from the mock. */
-export type LocalEvent =
-  { type: 'run_reset' } | { type: 'run_cancelled' } | { type: 'command_sent'; agentId: string; kind: CommandKind; afterSeq: number }
+export type LocalEvent = { type: 'run_reset' } | { type: 'run_cancelled' } | ({ type: 'command_sent'; agentId: string } & Action)
 
 export type ConsoleEvent = OrchestratorEvent | LocalEvent
 
@@ -25,12 +36,6 @@ export interface Gate {
   /** Seq the gate first opened at; an edit re-emit keeps it, so the queue place does not move. */
   openedSeq: number
   revision: number
-}
-
-export interface Action {
-  kind: CommandKind
-  /** The agent's maxSeq when the command was sent; its next event answers it. */
-  afterSeq: number
 }
 
 export interface Failure {
@@ -236,8 +241,9 @@ export function reduce(state: RunState, event: ConsoleEvent, at: number): RunSta
     case 'run_cancelled':
       return cancel(state)
     case 'command_sent': {
-      const agent = state.agents[event.agentId]
-      const actions = [...agent.actions, { kind: event.kind, afterSeq: event.afterSeq }]
+      const { type: _type, agentId, ...action } = event
+      const agent = state.agents[agentId]
+      const actions = [...agent.actions, action]
       return {
         ...state,
         agents: { ...state.agents, [agent.id]: { ...agent, actions } },

@@ -47,7 +47,8 @@ What each call clears in the view store (request, speed and jitter always stay):
 - Commands: the mock returns `true` when it accepted a command, `false` when the agent was not in a state
   that accepts it (README). Only an accepted command is recorded, as the local event `command_sent`, after
   the handler returns. That relies on the README: the mock is "driven by `setTimeout`", so an agent's answer
-  never arrives inside the call. `afterSeq` is the agent's `maxSeq` read before the call. A command sent while the agent's previous command is still
+  never arrives inside the call. `afterSeq` is the agent's `maxSeq` read before the call. `command_sent` also
+  carries what was actually sent (section 3, Actions), so the agent record can show it later. A command sent while the agent's previous command is still
   pending does not reach the mock and returns `true` (it is already in flight), so it never reads as refused.
   Components show their own "no longer waiting" text when a command is refused.
 
@@ -73,7 +74,7 @@ What each call clears in the view store (request, speed and jitter always stay):
 | --- | --- |
 | `run_reset` (local) | Back to `initialState`. |
 | `run_cancelled` (local) | Run status `cancelled`; every agent that is not `done` or `failed` becomes `cancelled`. |
-| `command_sent` (local) | Appends `{ kind, afterSeq }` to the agent's `actions`; `afterSeq` is the agent's `maxSeq` read before the call. |
+| `command_sent` (local) | Appends the action to the agent's `actions`: `{ kind, afterSeq, ...what was sent }`; `afterSeq` is the agent's `maxSeq` read before the call. |
 | `plan` | Creates one `AgentModel` per subtask, in plan order; stores `task`, `order`, `startedAt`. |
 | `agent_status` | Kept only if its `seq` is newer than the stored status (a late `running` never overrides `done`). Updates attempts; a status newer than the latest result marks that result `outdated`. |
 | `agent_step` | Inserted into `steps` by `seq`, so a late step lands in its place. |
@@ -112,6 +113,18 @@ change it, so an agent stays "Needs approval" until its next event.
 attempt; without it, `failed` followed by a non-failed status does. A `failed` status records
 `{ seq, message }` on the current attempt (`error.message`, or the status line when `error` is absent).
 
+### Actions
+
+`actions` is the agent's list of accepted commands, in the order they were sent. Each one records what was
+actually sent, read when the handler returned `true` (a refused command records nothing):
+
+| `kind` | Recorded |
+| --- | --- |
+| `approve` | The approved gate's `action`, `target`, `revision` and the full `draft`. |
+| `edit` | The sent `draft`. |
+| `resolve` | The picked option's `optionId` and `label`, or the typed `words`. |
+| `retry` | The `attempt` it started. |
+
 ### Gates and edits
 
 - A confirmation keeps `openedSeq`, the seq it first opened at, for its place in the queue.
@@ -139,7 +152,9 @@ is not in the queue and gets no Retry; a failure without `error` is offered Retr
 
 | Field | Meaning |
 | --- | --- |
-| `selectedId` | The decision the user picked. `select(id)` also clears the receipt; `pin(id)` does not. |
+| `mode` | `decisions` or `agent`: what the panel shows. `select(id)` and `backToDecisions()` set `decisions`; `openRecord(id)` sets `agent`. `start` and `reset` return to `decisions`; `cancel` keeps an open record. |
+| `selectedId` | The decision the user picked, kept while a record is open so "Back to decisions" returns to it. `select(id)` also clears the receipt; `pin(id)` does not. |
+| `recordId` | The agent whose record is open in `agent` mode. |
 | `receipt` | What the panel shows after approve, resolve or retry: `{ agentId, kind, ... }`. |
 | `request`, `speed`, `jitter` | The request text and the mock's speed and jitter (creation options), shared by the start card and the top bar. |
 | `runs` | How many runs were started; the start card shows until the first run has its plan. |
@@ -152,8 +167,11 @@ How the panel picks what to show (`hooks.ts`):
   The panel pins what it shows (`pin`), so a gate that arrives later with a lower seq does not take its place.
 - `useVisibleReceipt`: the receipt, except after the run has ended with an empty queue; then the panel shows
   "Nothing needs you right now". A visible receipt replaces the decision.
-- `useIsShown` and `shownDecisionNow`: the agent the panel is about, the receipt's agent first. The card
-  ring and connector use the first; `RetryButton` uses the second at click time.
+- `useIsShown` and `shownDecisionNow`: the agent the panel is about: the open record's agent in `agent` mode,
+  otherwise the receipt's agent first, then the shown decision. The card ring and connector use the first;
+  `RetryButton` uses the second at click time.
+- Receipts and the 3 s auto-advance work only in `decisions` mode: an open record stays on screen whatever
+  streams in, new decisions included, until the user moves.
 
 Component-local state: open trace (`AgentCard`), open event log (`TopBar`), the refused-command text.
 
@@ -165,10 +183,11 @@ Component-local state: open trace (`AgentCard`), open event log (`TopBar`), the 
 | `StartCard` (`TopBar.tsx`) | request, speed, jitter, `runs` | Request, speed and jitter before the first run; "Starting..." and off until the plan arrives; off for an empty request. |
 | `TopBar` | run header, plan task, log size | Request (shows `plan.task` while the run works), Cancel run / Run again, one-line summary, Debug row (speed and jitter are fixed during a run), event log toggle. |
 | `ResultBlock` | latest result, run header, request, speed, jitter | The result above the agents, appearing once it arrives (when it first appears it pushes the agents down once per run: the one allowed stream-caused layout shift); complete, partial, updating (outdated) or cancelled; Retry on an error item that is still in the queue (the partial note says "retry it" only then); "Run again" on a cancelled run's result. |
-| `AgentCard` | its agent, in queue, is shown | Label, badge, one truncated status line, Show steps; the whole card selects its decision; "Decision in the panel" for an approval or a question, "Retry in the panel" for a retryable failure (Retry is in the panel only). Fixed badge column. The status line is the newest of the status and the last step (after an answer the agent reports a step before its next status); failed keeps its status line; a cancelled agent shows "Last status: " + its last status line. |
+| `AgentCard` | its agent, in queue, is shown | Label, badge, one truncated status line, Show steps. Clicking the card selects it: an agent with an open decision shows that decision, any other agent opens its record in the panel. Footer button (the keyboard path): "Decision in the panel" for an approval or a question, "Retry in the panel" for a retryable failure (Retry is in the panel only), otherwise "Details in the panel". Fixed badge column. The status line is the newest of the status and the last step (after an answer the agent reports a step before its next status); failed keeps its status line; a cancelled agent shows "Last status: " + its last status line. The selected card (a decision or a record) gets the ring and connector. |
 | `AgentTrace` | its agent | `traceOf`; "Attempt N" dividers appear once there is a second attempt; a "Working" row with the status line while the agent runs, only if that status is newer than its last gate and the attempt has steps; empty text without steps. An open trace is capped at 400px with its own scroll; a new step scrolls it to the bottom unless the user scrolled up. |
-| `DecisionPanel` | queue, shown decision, receipt, waiting count | One decision at a time with "N of M" and Prev/Next; failure, confirmation (view, editor, waiting for the edited version, edited version) or question; receipts after approve, resolve, retry with "Next: ...", or "Nothing needs you right now" when nothing else waits. After 3 seconds a receipt opens the next decision by itself, only if one was waiting when the user acted; which one is read when the time is up. Going back to a decision whose command is still pending shows its receipt (rebuilt from the model and the stored answer), so the agent's next event cannot swap another decision in. Empty: "The agents are starting" while every agent is queued, otherwise worded by phase. |
-| `RetryButton` | its agent | The one Retry used by the panel and the partial result; shows a receipt when the panel is about that agent or already shows a receipt; a retry from the result never replaces another agent's open decision. |
+| `DecisionPanel` | queue, shown decision, receipt, waiting count | One decision at a time with "N of M" and Prev/Next; failure, confirmation (view, editor, waiting for the edited version, edited version) or question; receipts after approve, resolve, retry with "Next: ...", or "Nothing needs you right now" when nothing else waits. After 3 seconds a receipt opens the next decision by itself, only if one was waiting when the user acted; which one is read when the time is up. Going back to a decision whose command is still pending shows its receipt (rebuilt from the model and the stored answer), so the agent's next event cannot swap another decision in. Empty: "The agents are starting" while every agent is queued, otherwise worded by phase. In `agent` mode the panel shows the record instead, with "Back to decisions (N)" (N = waiting decisions) in the header; Prev / Next navigate decisions only. |
+| `AgentRecord` | its agent, its result items, its actions | What one agent did and what the user sent: current status line; its result items (`result.items` for that agent, marked "Updating" while the result is outdated); "You approved" with the full sent draft (To, Subject, other fields, body, revision); "You sent an edited version"; "You answered: ..."; "You retried: attempt N". The trace stays in the card. |
+| `RetryButton` | its agent | The one Retry used by the panel and the partial result; in `decisions` mode it shows a receipt when the panel is about that agent or already shows a receipt; a retry from the result never replaces another agent's open decision or an open record. |
 | `EventLog` | raw log | Debug table of every event, late rows marked, failure rows red, Copy JSON. |
 | `AppErrorFallback` | - | Error boundary fallback with "Start over" (`SubscriptionManager.reset`). |
 
@@ -218,6 +237,7 @@ rules).
 | `AgentList.test.tsx` | N agents give N cards, a fourth agent type, a card updated in place, trace order with the late step, the empty trace, Done kept after the late step. |
 | `PanelSelection.test.ts` | Which decision the panel shows, the receipt hidden after the run ends with an empty queue, receipt first in `shownDecisionNow`, `select` vs `pin`. |
 | `Actions.test.tsx` | Against a fake orchestrator: approve and its receipt, a double click sent once, the receipt shown again for a pending command, edit with kept text and re-approval, an unknown action, answers by option and by own words, retry from the panel and from a partial result, a refused command and its clearing, auto-advance only to a decision waiting at action time. |
+| `AgentRecord.test.tsx` | The record shows the approved email after the gate closed; an arriving decision does not replace an open record and N grows; auto-advance does not leave a record; Back to decisions returns to the pinned decision; a refused command records nothing. |
 | `mockAlias.test.ts` | The `@mock` alias loads the real mock (the only unit test that touches it). |
 | `e2e/pageLoads.e2e.ts` | The page loads in a real browser. |
 

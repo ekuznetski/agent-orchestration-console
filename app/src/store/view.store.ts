@@ -26,7 +26,12 @@ export interface Answer {
 }
 
 export interface ViewStore {
+  /** What the panel shows: the decision queue, or one agent's record. */
+  mode: 'decisions' | 'agent'
+  /** The picked decision; kept while a record is open, so Back to decisions returns to it. */
   selectedId: string | null
+  /** The agent whose record is open in agent mode. */
+  recordId: string | null
   receipt: Receipt | null
   request: string
   speed: number
@@ -34,8 +39,11 @@ export interface ViewStore {
   runs: number
   edits: Record<string, EditEntry>
   answers: Record<string, Answer>
-  /** Picks a decision and clears the receipt. */
+  /** Picks a decision, switches to decisions mode and clears the receipt. */
   select: (id: string) => void
+  /** Opens an agent's record in the panel. */
+  openRecord: (id: string) => void
+  backToDecisions: () => void
   /** Keeps what the panel shows, without touching the receipt. */
   pin: (id: string) => void
   setReceipt: (receipt: Receipt | null) => void
@@ -49,7 +57,7 @@ export interface ViewStore {
   runReset: () => void
 }
 
-const cleared = { selectedId: null, receipt: null, edits: {}, answers: {} }
+const cleared = { mode: 'decisions' as const, selectedId: null, recordId: null, receipt: null, edits: {}, answers: {} }
 
 export const useViewStore = create<ViewStore>()((set) => ({
   ...cleared,
@@ -57,7 +65,9 @@ export const useViewStore = create<ViewStore>()((set) => ({
   speed: 1,
   jitter: false,
   runs: 0,
-  select: (id) => set({ selectedId: id, receipt: null }),
+  select: (id) => set({ mode: 'decisions', selectedId: id, receipt: null }),
+  openRecord: (id) => set({ mode: 'agent', recordId: id }),
+  backToDecisions: () => set({ mode: 'decisions' }),
   pin: (id) => set({ selectedId: id }),
   setReceipt: (receipt) => set({ receipt }),
   setRequest: (request) => set({ request }),

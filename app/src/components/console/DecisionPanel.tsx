@@ -7,6 +7,7 @@ import { useConsoleStore } from '@/store/console.store'
 import { useDecisionQueue, useShownDecision, useVisibleReceipt } from '@/store/hooks'
 import { pendingCommand, phaseOf, waitingQueue } from '@/store/selectors'
 import { useViewStore, type Receipt } from '@/store/view.store'
+import { AgentRecord } from './AgentRecord'
 import { ConfirmationDecision, FailureDecision, QuestionDecision, answerText, type Act } from './DecisionViews'
 
 const AUTO_ADVANCE_MS = 3000
@@ -81,6 +82,10 @@ export function DecisionPanel() {
   const shownId = useShownDecision()
   const receipt = useVisibleReceipt()
   const selectedId = useViewStore((state) => state.selectedId)
+  const recordId = useViewStore((state) => (state.mode === 'agent' ? state.recordId : null))
+  const backToDecisions = useViewStore((state) => state.backToDecisions)
+  const recordAgent = useConsoleStore((state) => (recordId ? state.agents[recordId] : null))
+  const waitingCount = useConsoleStore((state) => waitingQueue(state).length)
   const answers = useViewStore((state) => state.answers)
   const select = useViewStore((state) => state.select)
   const pin = useViewStore((state) => state.pin)
@@ -98,7 +103,8 @@ export function DecisionPanel() {
     if (!receipt) return
     const timer = setTimeout(() => {
       const next = waitingQueue(useConsoleStore.getState()).find((id) => id !== receipt.agentId && receipt.waitingAtAction.includes(id))
-      if (next) useViewStore.getState().select(next)
+      // Never leave an open record: auto-advance works only in decisions mode.
+      if (next && useViewStore.getState().mode === 'decisions') useViewStore.getState().select(next)
     }, AUTO_ADVANCE_MS)
     return () => clearTimeout(timer)
   }, [receipt])
@@ -134,7 +140,13 @@ export function DecisionPanel() {
   const shownReceipt = receipt ?? rebuilt
 
   const index = shownId ? queue.indexOf(shownId) : -1
-  const edge = receipt ? 'var(--tone-success)' : agent ? toneColor(TAGS[agent.tag].tone) : 'transparent'
+  const edge = recordAgent
+    ? toneColor(TAGS[recordAgent.tag].tone)
+    : receipt
+      ? 'var(--tone-success)'
+      : agent
+        ? toneColor(TAGS[agent.tag].tone)
+        : 'transparent'
 
   return (
     <aside
@@ -145,39 +157,53 @@ export function DecisionPanel() {
       className="flex min-h-0 flex-col gap-2.5 overflow-y-auto border-l-[3px] p-3.5"
       style={{ borderLeftColor: edge }}
     >
-      <div className="flex items-center justify-between gap-2">
-        <h2 className="text-sm font-bold">Decisions waiting for you</h2>
-        {agent && !receipt && (
-          <div className="text-muted-foreground flex items-center gap-1.5">
-            <Button variant="outline" size="sm" disabled={index <= 0} onClick={() => move(queue[index - 1])}>
-              Prev
-            </Button>
-            <span>
-              {index + 1} of {queue.length}
-            </span>
-            <Button variant="outline" size="sm" disabled={index >= queue.length - 1} onClick={() => move(queue[index + 1])}>
-              Next
-            </Button>
-          </div>
-        )}
-      </div>
-      {shownReceipt ? (
-        <ReceiptView receipt={shownReceipt} onNext={move} />
-      ) : agent ? (
+      {recordId ? (
         <>
-          <div className="text-muted-foreground">
-            {agentType(agent.type).name} - {agent.label}
+          <div className="flex items-center justify-between gap-2">
+            <h2 className="text-sm font-bold">Agent record</h2>
+            <Button variant="outline" size="sm" onClick={backToDecisions}>
+              Back to decisions ({waitingCount})
+            </Button>
           </div>
-          {agent.tag === 'failed' ? (
-            <FailureDecision agent={agent} />
-          ) : agent.gate?.event.type === 'confirmation_required' ? (
-            <ConfirmationDecision agent={agent} gate={agent.gate} refused={refusedId === agent.id} act={act} />
-          ) : agent.gate?.event.type === 'escalation_required' ? (
-            <QuestionDecision agent={agent} gate={agent.gate} refused={refusedId === agent.id} act={act} />
-          ) : null}
+          <AgentRecord id={recordId} />
         </>
       ) : (
-        <EmptyState />
+        <>
+          <div className="flex items-center justify-between gap-2">
+            <h2 className="text-sm font-bold">Decisions waiting for you</h2>
+            {agent && !receipt && (
+              <div className="text-muted-foreground flex items-center gap-1.5">
+                <Button variant="outline" size="sm" disabled={index <= 0} onClick={() => move(queue[index - 1])}>
+                  Prev
+                </Button>
+                <span>
+                  {index + 1} of {queue.length}
+                </span>
+                <Button variant="outline" size="sm" disabled={index >= queue.length - 1} onClick={() => move(queue[index + 1])}>
+                  Next
+                </Button>
+              </div>
+            )}
+          </div>
+          {shownReceipt ? (
+            <ReceiptView receipt={shownReceipt} onNext={move} />
+          ) : agent ? (
+            <>
+              <div className="text-muted-foreground">
+                {agentType(agent.type).name} - {agent.label}
+              </div>
+              {agent.tag === 'failed' ? (
+                <FailureDecision agent={agent} />
+              ) : agent.gate?.event.type === 'confirmation_required' ? (
+                <ConfirmationDecision agent={agent} gate={agent.gate} refused={refusedId === agent.id} act={act} />
+              ) : agent.gate?.event.type === 'escalation_required' ? (
+                <QuestionDecision agent={agent} gate={agent.gate} refused={refusedId === agent.id} act={act} />
+              ) : null}
+            </>
+          ) : (
+            <EmptyState />
+          )}
+        </>
       )}
     </aside>
   )

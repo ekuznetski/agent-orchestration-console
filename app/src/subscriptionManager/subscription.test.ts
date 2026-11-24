@@ -94,7 +94,9 @@ describe('commands', () => {
     expect(approve('agent_drafting')).toBe(false)
     expect(drafting().actions).toEqual([])
     expect(approve('agent_drafting')).toBe(true)
-    expect(drafting().actions).toEqual([{ kind: 'approve', afterSeq: 2 }])
+    expect(drafting().actions).toEqual([
+      { kind: 'approve', afterSeq: 2, action: 'send_email', target: 't', revision: 1, draft: { subject: 'S', body: 'B' } },
+    ])
   })
 
   it('reads afterSeq before the call, so an answer delivered inside the call still answers the command', () => {
@@ -104,7 +106,9 @@ describe('commands', () => {
       return true
     })
     expect(approve('agent_drafting')).toBe(true)
-    expect(drafting().actions).toEqual([{ kind: 'approve', afterSeq: 2 }])
+    expect(drafting().actions).toEqual([
+      { kind: 'approve', afterSeq: 2, action: 'send_email', target: 't', revision: 1, draft: { subject: 'S', body: 'B' } },
+    ])
     expect(pendingCommand(drafting())).toBeNull()
   })
 
@@ -130,7 +134,7 @@ describe('commands', () => {
       effectClass: 'irreversible',
       draft,
     })
-    expect(resolve('agent_drafting', 'week_of_9_mar')).toBe(true)
+    expect(resolve('agent_drafting', { words: 'week_of_9_mar' })).toBe(true)
     expect(fake.orchestrator.resolve).toHaveBeenCalledWith('agent_drafting', 'week_of_9_mar')
     emit({ type: 'agent_step', seq: 4, agentId: 'agent_drafting', act: 'decided', detail: 'd' })
     expect(retry('agent_drafting')).toBe(true)

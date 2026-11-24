@@ -18,7 +18,8 @@ export function RetryButton({ agentId, label = 'Retry' }: { agentId: string; lab
     const state = useConsoleStore.getState()
     const view = useViewStore.getState()
     const waitingAtAction = waitingQueue(state).filter((id) => id !== agentId)
-    const panelIsAboutIt = shownDecisionNow() === agentId || view.receipt !== null
+    // Receipts only in decisions mode: an open record is never replaced.
+    const panelIsAboutIt = view.mode === 'decisions' && (shownDecisionNow() === agentId || view.receipt !== null)
     const attempt = state.agents[agentId].attempts[state.agents[agentId].attempts.length - 1].n + 1
     const accepted = retry(agentId)
     setRefused(!accepted)
