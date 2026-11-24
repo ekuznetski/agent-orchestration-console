@@ -1,6 +1,7 @@
 # Agent Orchestration Console - candidate write-up
 
-The assignment and the mock's contract: [mock/README.md](mock/README.md).
+The assignment and the mock's contract: [mock/README.md](mock/README.md), the original assignment text; its paths
+are relative to the repo root.
 
 A front end for the provided mock orchestrator: one request fans out to three agents, and the console shows
 their progress, the decisions that need the user and the result. One design rule runs through it: async events
@@ -58,6 +59,9 @@ with the layout options considered and the chosen one, and a Design page). Snaps
 - [docs/design/wireframe-chosen.png](docs/design/wireframe-chosen.png): the chosen layout, one decision mid-run.
 - [docs/design/design-main.png](docs/design/design-main.png): the Design page's main board.
 
+`docs/design` shows the mockups; where the app differs from them on purpose is listed in
+[docs/architecture.md](docs/architecture.md) (Visual design).
+
 ## 4. Stack and why
 
 - React 19 with the React Compiler: memoization without hand-written `useMemo` / `memo`.
@@ -112,17 +116,19 @@ Two stores, because they change for different reasons and have different lifetim
 
 ## 7. Decisions and trade-offs
 
-- **The panel never moves by itself.** Async events never move, resize or replace what the user is reading or
-  the control under the cursor; only the user's click switches the panel. There is no auto-advance: after an
-  action the panel keeps its outcome ("Approved", "Answer sent: ...") and offers "Next decision: <agent>". New
-  decisions are announced by the card badge, the "K need you" count and that button.
-- **Allowed layout changes**, all bounded: the first result appearing above the agents; that result replaced by a
-  newer one after the user's Retry; a trace the user expanded (capped at 400px, then it scrolls); the event log,
-  a debug view the user opened. The result pushes the cards down once when it first appears (and once more when a
-  Retry replaces it): it is what the user looks for when the run ends, and it appears only at that moment; during
-  streaming the cards never move, unless the user has opened a trace above them (it grows with new steps up to
-  400px). Everything else has reserved space. An e2e watch checks every frame that agent cards move only in those
-  cases.
+- **The panel never moves by itself.** Async events never move, resize or replace what the user is reading or the
+  control under the cursor; only the user's click switches the panel. The one exception is the empty panel
+  ("Nothing needs you right now"): the first decision that arrives opens there, since nothing is being read.
+  There is no auto-advance: after an action the panel keeps its outcome ("Approved", "Answer sent: ...") and
+  offers "Next decision: <agent>". New decisions are announced by the card badge, the "K need you" count and that
+  button. The same footer button sits under an agent's record, so there is one way to the next decision.
+- **Allowed layout changes**, all bounded: the first result appearing at the top, full width above the agents and
+  the panel; that result replaced by a newer one after the user's Retry; a trace the user expanded (capped at
+  400px, then it scrolls); the event log, a debug view the user opened. The result pushes both columns down once
+  when it first appears (and once more when a Retry replaces it): it is the most important thing when the run
+  ends, and it appears only at that moment. During streaming the cards and the panel never move, unless the user
+  has opened a trace above a card (it grows with new steps up to 400px). Everything else has reserved space. An
+  e2e watch checks every frame that the cards and the panel move only in those cases.
 - **The effect line sits under Approve / Edit** ("Be careful, this action cannot be undone", red for
   irreversible), because that is where the eye and the cursor are at the moment of clicking.
 - **Free-text answers.** `mock/README.md` allows a free-text answer to a question; the console sends it verbatim.
@@ -146,9 +152,10 @@ Two stores, because they change for different reasons and have different lifetim
   one-line slots keep the cards at a fixed height while events stream.
 - **The decision panel changes height when the user switches decisions**: that change follows the user's click,
   never an event.
-- **Cancel run is a text button, and the debug controls are muted and locked during a run**: Cancel is secondary
-  to the decisions, and the mock takes speed and jitter only when it is created, so they can be set only before a
-  run.
+- **Cancel run takes the place of Run again during a run, as in the design, and the debug controls are muted and
+  locked**: a click that is the second of a double click (`detail > 1`) is ignored there, so a double click on
+  Run again cannot cancel the run it just started. The mock takes speed and jitter only when it is created, so
+  they can be set only before a run.
 
 ### What the console does not check, and why
 
@@ -223,14 +230,14 @@ the mock's labels are fixed. Lint reports only `only-export-components` warnings
 | Criterion (mock/README.md)                                            | Mechanism                                                                                                                                                                                                                                        | Tests                                                                                                                                  |
 | --------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------- |
 | Streaming: lines update in place                                      | One card per agent keyed by id, its own selector; one status line slot                                                                                                                                                                           | e2e `2. a line updates in place`; `AgentList` "updates a card in place"                                                                |
-| Concurrent agents stay independent                                    | Per-agent model and subscriptions; a gate pauses only its agent                                                                                                                                                                                  | e2e `5. an escalation pauses only its own agent`; `ResultRenders`                                                                      |
+| Concurrent agents stay independent                                    | Per-agent model and subscriptions; a gate pauses only its agent                                                                                                                                                                                  | e2e `5. an escalation pauses only its own agent`; `CardRenders`, `ResultRenders`                                                       |
 | Out-of-order and terminal events                                      | Everything ordered by `seq`; a late step inserted, a stale status dropped, Done kept                                                                                                                                                             | reducer "orders every trace by seq", "places the step that arrives after done", "never lets an older status override"; e2e with jitter |
 | Run / agent / trace model                                             | `reduce` over events and accepted commands; `traceOf` groups by attempt                                                                                                                                                                          | reducer and selectors tests                                                                                                            |
 | Paused states the run resumes from                                    | Gates derived from the newest event; attempts for failures; Retry, answer and approve resume                                                                                                                                                     | reducer "splits research into two attempts", "keeps needs_approval ... between edit() and the re-emitted gate"                         |
 | A fourth agent type                                                   | Tags and labels fall back for an unknown type (`agentTags.ts`)                                                                                                                                                                                   | reducer "handles a fourth agent type and a ten-agent plan"; `AgentList` "renders ten cards ... a fourth agent type"                    |
 | Trust: the gate blocks, Edit forces re-approval, effect class visible | Approve is the only path to `approve()`; an edit re-opens the gate; effect line under the buttons                                                                                                                                                | e2e `4. a confirmation does not fire until approved`; `Actions` approve and edit tests                                                 |
 | States under ambiguity                                                | Starting and Planning spinners (they guard a slow backend; this mock sends the plan synchronously inside `start()`, so they do not show in the demo), empty trace text, failed with Retry, needs approval / answer, waiting for agent, cancelled | e2e `3.`, `6.`, Cancel tests; `CancelledRun`; `Actions` "the card badge says Waiting for agent"                                        |
-| Design taste                                                          | One raised card per region, colour only for state, the panel rule                                                                                                                                                                                | design check against the boards (`docs/architecture.md`, Visual design); e2e layout watch                                              |
+| Design taste                                                          | One raised card per region, colour only for state, the panel rule                                                                                                                                                                                | design check against the mockups (`docs/design`); e2e layout watch                                                                     |
 
 ## 12. Definition of done, and where it is proven
 

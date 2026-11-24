@@ -12,8 +12,9 @@ import {
   watchLayout,
 } from './fixtures.ts'
 
-// Each test is one item of the task's Definition of done, against the real app and the real mock at 4x.
-// Every wait is on UI state; there are no sleeps.
+// The first six tests are the Definition of done items; the rest cover the partial result and its Retry, Cancel and
+// Run again, layout stability every frame, long text and form controls. All run against the real app and the real
+// mock (4x unless a test needs to see a short-lived state). Every wait is on UI state; there are no sleeps.
 
 test('1. submitting a request renders exactly one status line per agent', async ({ page, jitter }) => {
   await startRun(page, jitter)
@@ -255,6 +256,16 @@ test('Cancel run keeps the screen; Run again starts a fresh run', async ({ page,
   await expect(page.getByTestId(/^agent-card-/)).toHaveCount(3)
   await expect(page.getByTestId('agent-badge').filter({ hasText: 'Cancelled' })).toHaveCount(0)
   expect(await debugRow()).toEqual(running)
+})
+
+test('a double click on Run again starts one run and leaves it running', async ({ page, jitter }) => {
+  await startRun(page, jitter, '0.25x')
+  await page.getByRole('button', { name: 'Cancel run' }).click()
+  await expect(page.getByTestId('run-summary')).toContainText('Run cancelled')
+  await page.getByRole('button', { name: 'Run again' }).dblclick()
+  await expect(page.getByTestId('run-summary')).toContainText('Running')
+  await expect(page.getByTestId('run-summary')).not.toContainText('Run cancelled')
+  await expect(page.getByRole('button', { name: 'Cancel run' })).toBeVisible()
 })
 
 test('the event log toggle keeps its place while events stream; the table does not widen', async ({ page, jitter }) => {

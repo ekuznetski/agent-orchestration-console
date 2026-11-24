@@ -8,7 +8,7 @@ import { useViewStore } from '@/store/view.store'
 import { RetryButton } from './RetryButton'
 import { ClampedText } from './ClampedText'
 
-/** The latest aggregate, above the agents. A newer result replaces it in place; a status newer
+/** The latest aggregate, full width above the agents and the panel. A newer result replaces it in place; a status newer
  * than the result dims it as "Updating" until then. Texts are shown verbatim. */
 export function ResultBlock() {
   const result = useConsoleStore((state) => state.result)
@@ -112,15 +112,15 @@ function ResultItem({ item }: { item: ResultEvent['items'][number] }) {
               ))}
             </div>
           )}
-          {/* Retry goes under the error text: the result sits in the narrower left column, where a slot beside the
-              text would squeeze it. The row keeps one height, so "Retrying..." taking the button's place moves nothing. */}
-          {error && (retryable || retrying) && (
-            <div className="mt-2 flex min-h-9 items-center">
-              {retryable && <RetryButton agentId={item.agentId} label="Retry agent" />}
-              {retrying && <span className="text-muted-foreground">Retrying...</span>}
-            </div>
-          )}
         </div>
+        {/* Retry sits to the right of the error text. The slot has a fixed width, so "Retrying..." taking the
+            button's place does not rewrap the text beside it. */}
+        {error && (retryable || retrying) && (
+          <div className="flex w-28 shrink-0 justify-end">
+            {retryable && <RetryButton agentId={item.agentId} label="Retry agent" />}
+            {retrying && <span className="text-muted-foreground flex h-9 items-center text-sm">Retrying...</span>}
+          </div>
+        )}
       </div>
     </li>
   )

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type Ref } from 'react'
 import { Button } from '@/components/ui/button'
 import { TAGS, actionLabels, toneEdge } from '@/config/agentTags'
 import type { AgentModel } from '@/store/console.reducer'
@@ -15,8 +15,8 @@ function emptyLine(phase: ReturnType<typeof phaseOf>, allQueued: boolean): strin
   if (phase === 'cancelled') return 'The run was cancelled.'
   if (phase === 'idle' || allQueued) return 'The agents are starting. New decisions open here.'
   if (phase === 'running') return 'Agents keep working. New decisions open here.'
-  if (phase === 'finishing') return 'The agents are done. The result appears above the agents.'
-  return 'The run is finished. The result is above the agents.'
+  if (phase === 'finishing') return 'The agents are done. The result appears at the top.'
+  return 'The run is finished. The result is at the top.'
 }
 
 function EmptyState() {
@@ -49,6 +49,41 @@ function nowLine(agent: AgentModel): string {
   return statusLineOf(agent) ?? ''
 }
 
+/** The panel's footer bar: "Next decision: <agent>" on the right when a decision waits, or a muted line in the same
+ * height. The one way to the next decision, under an outcome and under a record alike. */
+function NextDecisionFooter({
+  nextId,
+  buttonRef,
+  onNext,
+}: {
+  nextId: string | null
+  buttonRef?: Ref<HTMLButtonElement>
+  onNext: (id: string) => void
+}) {
+  const nextAgent = useConsoleStore((state) => (nextId ? state.agents[nextId] : null))
+  return (
+    <div className="mt-auto flex h-[61px] items-center justify-end border-t px-4">
+      {nextAgent ? (
+        // The prefix stays and a long label truncates, so the button never leaves the footer. Prefix and label are
+        // two flex items: a word-space gap (gap-1), and the accessible name spelled out.
+        <Button
+          size="lg"
+          variant="outline"
+          ref={buttonRef}
+          className="max-w-full gap-1"
+          aria-label={`Next decision: ${nextAgent.label}`}
+          onClick={() => onNext(nextAgent.id)}
+        >
+          Next decision:
+          <ClampedText text={nextAgent.label} lines={1} />
+        </Button>
+      ) : (
+        <span className="text-muted-foreground mr-auto text-sm">Nothing else needs you right now.</span>
+      )}
+    </div>
+  )
+}
+
 /** The outcome of the user's last action, and the way to the next decision. Nothing here moves by itself:
  * the second line changes text in place, and the button slot keeps its height whether it holds a button or not. */
 function OutcomeView({ outcome, onNext }: { outcome: Outcome; onNext: (id: string) => void }) {
@@ -58,7 +93,6 @@ function OutcomeView({ outcome, onNext }: { outcome: Outcome; onNext: (id: strin
     const queue = waitingQueue(state)
     return queue.includes(outcome.agentId) ? outcome.agentId : (queue[0] ?? null)
   })
-  const nextAgent = useConsoleStore((state) => (next ? state.agents[next] : null))
   const now = nowLine(agent)
   const statusRef = useRef<HTMLDivElement>(null)
   const nextRef = useRef<HTMLButtonElement>(null)
@@ -81,26 +115,7 @@ function OutcomeView({ outcome, onNext }: { outcome: Outcome; onNext: (id: strin
           <ClampedText text={now} lines={2} className="text-muted-foreground h-[2lh]" />
         </Frame>
       </div>
-      {/* The footer bar at the bottom of the panel: the button on the right, or a muted line in the same height. */}
-      <div className="mt-auto flex h-[61px] items-center justify-end border-t px-4">
-        {nextAgent ? (
-          // The prefix stays; a long label truncates, so the button never leaves the footer.
-          // The prefix and the label are two flex items: a word-space gap (gap-1) instead of the icon gap, and the
-          // accessible name spelled out, since the label sits in its own box.
-          <Button
-            size="lg"
-            ref={nextRef}
-            className="max-w-full gap-1"
-            aria-label={`Next decision: ${nextAgent.label}`}
-            onClick={() => onNext(nextAgent.id)}
-          >
-            Next decision:
-            <ClampedText text={nextAgent.label} lines={1} />
-          </Button>
-        ) : (
-          <span className="text-muted-foreground mr-auto text-sm">Nothing else needs you right now.</span>
-        )}
-      </div>
+      <NextDecisionFooter nextId={next} buttonRef={nextRef} onNext={onNext} />
     </div>
   )
 }
@@ -113,7 +128,6 @@ export function DecisionPanel() {
   const outcome = useVisibleOutcome()
   const selectedId = useViewStore((state) => state.selectedId)
   const recordId = useViewStore((state) => (state.mode === 'agent' ? state.recordId : null))
-  const backToDecisions = useViewStore((state) => state.backToDecisions)
   const recordAgent = useConsoleStore((state) => (recordId ? state.agents[recordId] : null))
   const waitingCount = useConsoleStore((state) => waitingQueue(state).length)
   const select = useViewStore((state) => state.select)
@@ -163,17 +177,16 @@ export function DecisionPanel() {
     >
       {recordId ? (
         <>
-          <div className="flex items-center justify-between gap-2 border-b px-4 py-3">
+          <div className="border-b px-4 py-3">
             <h2 ref={recordRef} tabIndex={-1} className="text-title font-semibold outline-none">
               Agent record
             </h2>
-            <Button variant="outline" onClick={backToDecisions}>
-              {waitingCount > 0 ? `Back to decisions (${waitingCount})` : 'Back to decisions'}
-            </Button>
           </div>
           <div className="p-4">
             <AgentRecord id={recordId} />
           </div>
+          {/* The same footer as under an outcome: the picked decision if it still waits, otherwise the longest wait. */}
+          <NextDecisionFooter nextId={shownId} onNext={move} />
         </>
       ) : (
         <>

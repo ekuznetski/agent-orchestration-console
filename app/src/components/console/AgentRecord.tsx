@@ -18,6 +18,16 @@ const Fields = ({ children }: { children: ReactNode }) => (
   <dl className="text-label m-0 grid grid-cols-[64px_minmax(0,1fr)] gap-x-3 gap-y-1.5">{children}</dl>
 )
 
+/** The effect class of an approved action, as a sentence (red when it cannot be undone). */
+function EffectRecord({ effectClass }: { effectClass: string }) {
+  const effect = effectClassLabel(effectClass)
+  return (
+    <p className={`text-label font-semibold ${effect.tone === 'danger' ? 'text-failed' : ''}`}>
+      {effect.record ?? `${effect.label}: ${effect.note}`}
+    </p>
+  )
+}
+
 /** One accepted command, with what was actually sent. */
 function ActionEntry({ action }: { action: Action }) {
   if (action.kind === 'retry') return <p>You retried: attempt {action.attempt}</p>
@@ -41,11 +51,7 @@ function ActionEntry({ action }: { action: Action }) {
         ))}
       </Fields>
       {body !== undefined && <div className="bg-muted rounded-md px-3.5 py-3 whitespace-pre-wrap">{body}</div>}
-      {action.kind === 'approve' && (
-        <p className={`text-label font-semibold ${effectClassLabel(action.effectClass).tone === 'danger' ? 'text-failed' : ''}`}>
-          {effectClassLabel(action.effectClass).label}: {effectClassLabel(action.effectClass).note}
-        </p>
-      )}
+      {action.kind === 'approve' && <EffectRecord effectClass={action.effectClass} />}
     </div>
   )
 }

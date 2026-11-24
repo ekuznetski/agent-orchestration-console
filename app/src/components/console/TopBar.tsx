@@ -14,7 +14,7 @@ import { Spinner } from '@/components/ui/spinner'
 import { StatusBadge } from './StatusBadge'
 import { ClampedText } from './ClampedText'
 
-const SPEEDS = [0.25, 0.5, 1, 4]
+const SPEEDS = [0.25, 0.5, 1, 2, 4]
 
 const SUMMARY: Record<Phase, string> = {
   idle: 'Starting',
@@ -222,7 +222,17 @@ export function TopBar() {
           />
         )}
         {active ? (
-          <Button variant="ghost" size="lg" className="text-muted-foreground" onClick={cancel}>
+          // Cancel run takes the place of Run again, as in the design. A double click on Run again would land its
+          // second click here, so a click that is the second of a double click (detail > 1) is ignored; a single
+          // click or the keyboard (detail 0 or 1) cancels.
+          <Button
+            variant="ghost"
+            size="lg"
+            className="text-muted-foreground"
+            onClick={(e) => {
+              if (e.detail <= 1) cancel()
+            }}
+          >
             Cancel run
           </Button>
         ) : (
@@ -266,7 +276,7 @@ export function TopBar() {
           )}
         </span>
         {modelError && <span className="text-failed ml-2">The screen may not match what the agents did</span>}
-        {active && <span className="text-faint ml-auto">The result appears above the agents when the run ends</span>}
+        {active && <span className="text-faint ml-auto">The result appears at the top when the run ends</span>}
       </div>
       <div className="border-t px-4 pt-2 pb-3">
         <DebugRow locked={active} logOpen={logOpen} onToggleLog={() => setLogOpen(!logOpen)} />

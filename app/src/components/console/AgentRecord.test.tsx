@@ -87,7 +87,7 @@ describe('agent record', () => {
     expect(panel().getByText('maya@example.test')).toBeTruthy()
     expect(panel().getByText('Hello')).toBeTruthy()
     expect(panel().getByText('Body text')).toBeTruthy()
-    expect(panel().getByText('Irreversible: cannot be undone once it happens')).toBeTruthy()
+    expect(panel().getByText('This action cannot be undone')).toBeTruthy()
   })
 
   it('puts the result that arrives later below what the user did', () => {
@@ -108,23 +108,23 @@ describe('agent record', () => {
     expect(did.compareDocumentPosition(result) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
   })
 
-  it('stays open when a decision arrives, and the waiting count grows', () => {
+  it('stays open when a decision arrives; its footer offers the next decision', () => {
     setup({ waiting: false })
     openCard('drafting')
-    expect(panel().getByRole('button', { name: 'Back to decisions (1)' })).toBeTruthy()
+    expect(panel().getByRole('button', { name: 'Next decision: Research it' })).toBeTruthy()
     confirmation()
     expect(panel().getByText('Agent record')).toBeTruthy()
-    expect(panel().getByRole('button', { name: 'Back to decisions (2)' })).toBeTruthy()
+    expect(panel().getByRole('button', { name: 'Next decision: Research it' })).toBeTruthy()
   })
 
-  it('Back to decisions returns to the pinned decision', () => {
+  it('Next decision in the record returns to the pinned decision', () => {
     setup()
     openCard('drafting')
     expect(panel().getByText('Send this email?')).toBeTruthy()
     status('research', 'running', { attempt: 2 })
     openCard('research')
     expect(panel().getByText('Agent record')).toBeTruthy()
-    click(/Back to decisions/)
+    click('Next decision: Draft it')
     expect(panel().getByText('Send this email?')).toBeTruthy()
   })
 
@@ -139,12 +139,13 @@ describe('agent record', () => {
   })
 })
 
-describe('back to decisions', () => {
-  it('shows no count when nothing waits', () => {
+describe('record footer', () => {
+  it('says nothing else needs you when nothing waits', () => {
     setup({ waiting: false })
     status('research', 'running', { attempt: 2 })
     openCard('research')
-    expect(panel().getByRole('button', { name: 'Back to decisions' })).toBeTruthy()
+    expect(panel().getByText('Nothing else needs you right now.')).toBeTruthy()
+    expect(panel().queryByRole('button', { name: /^Next decision/ })).toBeNull()
   })
 })
 

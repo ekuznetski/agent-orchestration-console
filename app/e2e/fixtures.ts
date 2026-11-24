@@ -66,10 +66,13 @@ export async function watchLayout(page: Page, traceOf?: string) {
       const block = document.querySelector<HTMLElement>('[aria-label="Result"]')
       const now = block ? Number(block.dataset.version) : 0
       const cards = [...document.querySelectorAll<HTMLElement>('[data-testid^="agent-card-"]')]
-      const at = cards.map((el) => el.getBoundingClientRect().top + window.scrollY)
+      // The panel is watched with the cards: the full-width result moves both, and nothing else may.
+      const panel = document.querySelector<HTMLElement>('aside')
+      const at = [...cards, ...(panel ? [panel] : [])].map((el) => el.getBoundingClientRect().top + window.scrollY)
       const trace = traceOf ? document.querySelector<HTMLElement>(`[data-testid="${traceOf}"] [data-testid="agent-trace"]`) : null
       const height = trace ? trace.getBoundingClientRect().height : null
       watch.cards = cards.map((el) => el.dataset.testid!)
+      const labels = [...watch.cards, ...(panel ? ['panel'] : [])]
       if (version === null) {
         // first frame: the starting point
       } else if (now !== version) {
@@ -78,14 +81,15 @@ export async function watchLayout(page: Page, traceOf?: string) {
       } else if (tops.length && at.some((top, i) => top !== tops[i])) {
         const grew = height !== null && traceHeight !== null && height > traceHeight && traceHeight < 400
         const below = cards.findIndex((el) => el.dataset.testid === traceOf)
-        const allowed = grew && at.every((top, i) => top === tops[i] || i > below)
+        // The panel (last entry) never moves with a trace: only cards below the traced one do.
+        const allowed = grew && at.every((top, i) => top === tops[i] || (i > below && i < cards.length))
         if (!allowed) {
           const line = (list: number[]) => list.map((top, i) => `${ids[i]}@${top}`).join(' ')
           watch.violations.push(`cards moved: ${line(tops)} -> ${line(at)} (trace ${traceHeight} -> ${height})`)
         }
       }
       tops = at
-      ids = watch.cards
+      ids = labels
       version = now
       traceHeight = height
       requestAnimationFrame(tick)

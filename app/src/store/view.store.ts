@@ -26,7 +26,7 @@ export interface Answer {
 export interface ViewStore {
   /** What the panel shows: the decision queue, or one agent's record. */
   mode: 'decisions' | 'agent'
-  /** The picked decision; kept while a record is open, so Back to decisions returns to it. */
+  /** The picked decision; kept while a record is open, so the record's Next decision returns to it while it waits. */
   selectedId: string | null
   /** The agent whose record is open in agent mode. */
   recordId: string | null
@@ -47,7 +47,6 @@ export interface ViewStore {
   select: (id: string) => void
   /** Opens an agent's record in the panel. */
   openRecord: (id: string) => void
-  backToDecisions: () => void
   /** Keeps what the panel shows, without touching the outcome. */
   pin: (id: string) => void
   setOutcome: (outcome: Outcome | null) => void
@@ -87,7 +86,6 @@ export const useViewStore = create<ViewStore>()((set) => ({
   runs: 0,
   select: (id) => set((state) => ({ mode: 'decisions', selectedId: id, outcome: null, focusRequest: state.focusRequest + 1 })),
   openRecord: (id) => set((state) => ({ mode: 'agent', recordId: id, focusRequest: state.focusRequest + 1 })),
-  backToDecisions: () => set((state) => ({ mode: 'decisions', focusRequest: state.focusRequest + 1 })),
   pin: (id) => set({ selectedId: id }),
   setOutcome: (outcome) => set({ outcome }),
   setRequest: (request) => set({ request }),

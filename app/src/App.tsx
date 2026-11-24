@@ -17,9 +17,12 @@ export default function App() {
     <div className="mx-auto max-w-[1200px] px-6 pt-6 pb-12">
       <Brand />
       <TopBar />
+      {/* Full width above both columns: the result is what the user looks for when the run ends. */}
+      <div className="mt-6 empty:hidden">
+        <ResultBlock />
+      </div>
       <div className="mt-6 grid grid-cols-[minmax(0,2fr)_minmax(0,3fr)] items-start gap-6">
         <main className="flex flex-col gap-6">
-          <ResultBlock />
           <AgentList key={runKey ?? 'none'} />
         </main>
         {/* Sticky beside the agents; a panel taller than the window scrolls on its own. */}

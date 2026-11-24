@@ -20,7 +20,7 @@ mock orchestrator --events--> SubscriptionManager --apply(event)--> console stor
 | Run model | `src/store/console.reducer.ts` | `reduce(state, event, at)`: the only place run state changes. Pure except the two documented exceptions (an unknown event type is logged and skipped; a throwing handler is caught and logged), see section 3. |
 | Store | `src/store/console.store.ts` | Zustand store holding `RunState` and `apply(e)`, which calls `reduce` with `Date.now()`. |
 | Derived data | `src/store/selectors.ts` | Pure functions over `RunState`: run header, phase, pending command, trace, decision queue. |
-| React access | `src/store/hooks.ts` | Small selector hooks so a component subscribes only to what it renders. One agent is read by reference (`useAgent`), so an event for another agent does not re-render it; objects and arrays built by selectors (`runHeader`, `decisionQueue`) are compared field by field (`useShallow`). |
+| React access | `src/store/hooks.ts` | Small selector hooks so a component subscribes only to what it renders. One agent is read by reference (`useAgent`), so an event for another agent does not re-render it; objects and arrays built by selectors (`runHeader`, `waitingQueue`) are compared field by field (`useShallow`). |
 | Screen state | `src/store/view.store.ts` | Which decision is shown, the outcome of the last action, request text, speed, jitter, run count, open edits, question answers. Not part of the run model. |
 | Labels | `src/config/agentTags.ts` | Words and tones per tag, agent type, action, result kind and effect class, with generic fallbacks. A confirmation whose action has no words of its own is named verbatim ("Approve archive_ticket?"), and its target row reads "Target" ("To" only for `send_email`). |
 | Components | `src/components/console/*` | Rendering and user input only. |
@@ -96,7 +96,7 @@ Every contract event is also appended to the raw `log` with `late: seq < highest
 
 ### Deliberate exceptions to the no-guards rule
 
-The project rule allows no guard without a contract line. These four are deliberate, each with its reason:
+No guard without a contract line. These four are deliberate, each with its reason:
 
 1. An unknown event type is logged (`console.warn`) and skipped in `reduce`, before the raw log, so it never
    reaches a handler. Reason: the event union in `mock/orchestrator.d.ts` is the set this console knows; a
@@ -174,7 +174,7 @@ is not in the queue and gets no Retry; a failure without `error` is offered Retr
 | Field | Meaning |
 | --- | --- |
 | `mode` | `decisions` or `agent`: what the panel shows. `select(id)` and `backToDecisions()` set `decisions`; `openRecord(id)` sets `agent`. `start` and `reset` return to `decisions`; `cancel` keeps an open record. |
-| `selectedId` | The decision the user picked, kept while a record is open so "Back to decisions" returns to it. `select(id)` also clears the outcome; `pin(id)` does not. |
+| `selectedId` | The decision the user picked, kept while a record is open so the record's "Next decision" returns to it while it still waits. `select(id)` also clears the outcome; `pin(id)` does not. |
 | `recordId` | The agent whose record is open in `agent` mode. |
 | `outcome` | What the user sent, stored when the mock accepted the command: `{ agentId, kind, answer?, attempt? }` for approve, edit, resolve or retry. Never rebuilt from the run model, so it cannot disappear when the agent answers. The panel shows it until the user moves. |
 | `focusRequest` | A counter bumped by `select`, `openRecord` and `backToDecisions`; the panel moves focus to what it then shows. Reset to 0 by `start` and `reset`. |
@@ -193,7 +193,7 @@ How the panel picks what to show (`hooks.ts`):
 - `useVisibleOutcome`: the outcome in `decisions` mode. A stored outcome replaces the decision and stays,
   also after the run ends, until the user picks something else.
 - `useIsShown` and `shownDecisionNow`: the agent the panel is about: the open record's agent in `agent` mode,
-  otherwise the outcome's agent first, then the shown decision. The card ring and connector use the first;
+  otherwise the outcome's agent first, then the shown decision. The card's raised look, shift and connector use the first;
   `RetryButton` uses the second at click time.
 
 ### The panel rule
@@ -208,12 +208,12 @@ user's click switches the panel. Focus stays where the user put it. In practice:
 - The outcome's second line and the button slot under it change in place: the second line has a fixed height of
   two lines (the card's status line stays one line, with the full text in its tooltip), and the slot keeps its height whether it holds the button or "Nothing else needs you right now."
 - There is no auto-advance and no Prev / Next: the user moves by the Next decision button or a card click.
-- The agent cards move in exactly two cases, both about the result block above them: when the first result
-  arrives (once per run), and when a newer result replaces it, which follows the user's Retry (mock/README.md: retrying
+- The agent cards and the panel move in exactly two cases, both about the full-width result block above them: when
+  the first result arrives (once per run), and when a newer result replaces it, which follows the user's Retry (mock/README.md: retrying
   after a degraded result "re-opens aggregation and a fresh `result` supersedes it"). Before the replacement the
   block keeps its height ("Retrying..." rows, "Updating" dims in place). The e2e watch (`watchLayout`) checks
-  this every frame in page coordinates (the page scrolls): a card move in any other frame, or the block going away,
-  fails the test. E2E waits for the fonts before measuring.
+  this every frame in page coordinates (the page scrolls): a card or panel move in any other frame, or the block
+  going away, fails the test. E2E waits for the fonts before measuring.
 - The open event log is a debug view: closed by default; while open it grows with every event and may move the
   content below it. That is accepted for a debug tool the user opened.
 - A third case is the user's own: a trace the user expands grows its card (up to the 400px cap, then it scrolls
@@ -221,7 +221,7 @@ user's click switches the panel. Focus stays where the user put it. In practice:
   open trace do not grow it past the cap.
 - Focus moves only after the user's own action, to the next sensible control: Edit focuses the editor's first
   field, Cancel edit gives it back to the Edit button; an outcome (after Save, Approve, Send answer, Retry) focuses the Next decision button, or the outcome
-  line when nothing waits; a card click, Next decision or Back to decisions focuses the shown decision (a group
+  line when nothing waits; a card click or Next decision focuses the shown decision (a group
   labelled with the agent) or the record's heading. A decision that opens in the empty panel by itself does
   not take focus.
 
@@ -231,14 +231,14 @@ Component-local state: open trace (`AgentCard`), open event log (`TopBar`), the 
 
 | Component | Reads | Does |
 | --- | --- | --- |
-| `App` | plan order, plan task, run key, `runs` | Start card until the first plan; then top bar, result, agents, decision panel. Cards are keyed by run so a new run remounts them. |
+| `App` | `hasPlan`, `startedAt` (the run key), `runs` | Start card until the first plan; then the top bar, the full-width result, then the agents and the decision panel side by side. Cards are keyed by run so a new run remounts them. |
 | `StartCard` (`TopBar.tsx`) | request, speed, jitter, `runs` | Request, speed and jitter before the first run; "Starting..." and off until the plan arrives; off for an empty request. After a refused start: "The orchestrator did not start the run." |
-| `TopBar` | run header, plan task, log size | A visually hidden h1 "Agent orchestration console" (the start card and the error fallback have their own h1). Request (shows `plan.task` while the run works), Cancel run / Run again, one-line run line (see Visual design: elapsed time, phase word or badge, counts; no counts before the plan; with "The screen may not match what the agents did" while `modelError` is set, until the next run), Debug row (speed and jitter are fixed during a run; the note "Speed is set before a run" keeps its space when hidden, so the run ending does not move the event log toggle), event log toggle. The phase with its counts and "K need you" are polite live regions, so a new decision is announced; the ticking clock is outside them. |
-| `ResultBlock` | latest result, run header, request, speed, jitter | The result above the agents, appearing once it arrives (it moves the agents only as the panel rule allows: when it first appears, and when a newer result replaces it after the user's Retry); complete, partial, updating (outdated) or cancelled; Retry on an error item whose agent the user can retry now (the partial note says "Retry it to update this result" only then); after the click the item's button row and the note keep their place and read "Retrying..." (the note: "Retrying... This result updates when the agent finishes.") until a newer result replaces the block, so a retry from the result does not move the agents before that; the block never goes away once shown; after a cancel a result that already arrived stays under the heading "Run cancelled" in a neutral band (never "Updating", not dimmed), noted "This is the result from before the run was cancelled." (with "K of N agents had failed." when an item is an error), with no Retry and no "Retrying..." note or row (Run again is in the top bar). It subscribes only to primitives (can retry, retrying) and each item (`ResultItem`) to its own agent's label and retry state (`canRetryFromResult`, `isRetryingFromResult`), so an event for another agent does not re-render it. |
+| `TopBar` | run header, plan task, log size | A visually hidden h1 "Agent orchestration console" (the start card and the error fallback have their own h1). Request (shows `plan.task` while the run works) with Run again at its right, replaced by the text button Cancel run while the run works (a click that is the second of a double click, `detail > 1`, is ignored, so a double click on Run again does not cancel the new run), one-line run line (see Visual design: elapsed time, phase word or badge, counts; no counts before the plan; with "The screen may not match what the agents did" while `modelError` is set, until the next run), Debug row (speed and jitter are fixed during a run; the note "Speed is set before a run" keeps its space when hidden, so the run ending does not move the event log toggle), event log toggle. The phase with its counts and "K need you" are polite live regions, so a new decision is announced; the ticking clock is outside them. |
+| `ResultBlock` | the result, the cancelled flag, the plan length, two retry flags | The result full width above the agents and the panel, appearing once it arrives (it moves both columns only as the panel rule allows: when it first appears, and when a newer result replaces it after the user's Retry); complete, partial, updating (outdated) or cancelled; Retry on an error item whose agent the user can retry now (the partial note says "Retry it to update this result" only then); after the click the item's button row and the note keep their place and read "Retrying..." (the note: "Retrying... This result updates when the agent finishes.") until a newer result replaces the block, so a retry from the result does not move anything before that; the block never goes away once shown; after a cancel a result that already arrived stays under the heading "Run cancelled" in a neutral band (never "Updating", not dimmed), noted "This is the result from before the run was cancelled." (with "K of N agents had failed." when an item is an error), with no Retry and no "Retrying..." note or row (Run again is in the top bar). It subscribes only to primitives (can retry, retrying) and each item (`ResultItem`) to its own agent's label and retry state (`canRetryFromResult`, `isRetryingFromResult`), so an event for another agent does not re-render it. |
 | `AgentCard` | its agent, waiting for the user, is shown | Label, badge, one truncated status line, Show steps. Clicking the card selects it: an agent the user can act on now (in `waitingQueue`) shows its decision; any other agent, one whose command is still pending included, opens its record in the panel. Footer button (the keyboard path; `aria-current` on the card the panel is about, since it navigates rather than toggles): "Decision in the panel" for an approval or a question, "Retry in the panel" for a retryable failure (Retry is in the panel only), otherwise "Details in the panel". Fixed badge column. Before the first status the line names the state ("Queued"). The status line is the newest of the status and the last step (after an answer the agent reports a step before its next status); failed keeps its status line; a cancelled agent shows "Last status: " + its newest text (status or step, whichever is newer). The selected card (a decision, an outcome or a record) is white and gets the connector (see Visual design). The trace opens between the status line and the footer. |
 | `AgentList` (`AgentCard.tsx`) | plan order, run status | The heading "Agents - plan order", then one card per agent in plan order; "Planning..." before the plan, or "The run was cancelled before the plan arrived." after a cancel. |
 | `AgentTrace` | its agent | `traceOf` as a numbered timeline (step numbers run across attempts, a check icon per step on a teal line that turns red into the failure row, which shows its status line verbatim); "Attempt N" dividers appear once there is a second attempt; a "Working" row with the status line while the agent runs, only if that status is newer than its last gate and the attempt has steps; empty text without steps. An open trace is capped at 400px with its own scroll; a new step scrolls it to the bottom unless the user scrolled up. |
-| `DecisionPanel` | shown decision, outcome, waiting count | One decision at a time in a `Frame` (see Visual design): failure, confirmation (view, editor, edited version) or question; the header shows "K need you" while decisions wait. A confirmation shows every field that will be sent; the body takes its natural height, never clipped by an inner scroll (the panel itself scrolls), so the whole draft is on screen before an irreversible action. After an accepted command the outcome replaces the decision: the first line is what was sent ("Approved", "Edit submitted", "Answer sent: ...", "Retry sent: attempt N"; at most two lines, the full answer in the tooltip and the record), the second line is the agent now ("Waiting for the agent to respond." while the command is pending, "The agent prepares the edited email; you approve it next." after an edit, then the agent's status line, verbatim (`statusLineOf`)). Under it, in a slot of fixed height, "Next decision: <agent label>" when a decision waits (the outcome's own agent first when it asks again, otherwise the longest wait), or "Nothing else needs you right now."; the switch happens only on click. Empty: "The run was cancelled." after a cancel (also before the plan), "The agents are starting" while every agent is queued, otherwise worded by phase. In `agent` mode the panel shows the record instead, with "Back to decisions (N)" (N = waiting decisions; just "Back to decisions" when none waits) in the header. The panel header and landmark read "Decisions" (true in every state, with "K need you" beside it only while decisions wait; the boards say "Decisions waiting for you"), or "Agent record" while a record is open. The failure decision says "The 1 step ... stays" or "The N steps ... stay". |
+| `DecisionPanel` | shown decision, outcome, waiting count | One decision at a time in a `Frame` (see Visual design): failure, confirmation (view, editor, edited version) or question; the header shows "K need you" while decisions wait. A confirmation shows every field that will be sent; the body takes its natural height, never clipped by an inner scroll (the panel itself scrolls), so the whole draft is on screen before an irreversible action. After an accepted command the outcome replaces the decision: the first line is what was sent ("Approved", "Edit submitted", "Answer sent: ...", "Retry sent: attempt N"; at most two lines, the full answer in the tooltip and the record), the second line is the agent now ("Waiting for the agent to respond." while the command is pending, "The agent prepares the edited email; you approve it next." after an edit, then the agent's status line, verbatim (`statusLineOf`)). Under it, in a slot of fixed height, "Next decision: <agent label>" when a decision waits (the outcome's own agent first when it asks again, otherwise the longest wait), or "Nothing else needs you right now."; the switch happens only on click. Empty: "The run was cancelled." after a cancel (also before the plan), "The agents are starting" while every agent is queued, otherwise worded by phase. In `agent` mode the panel shows the record instead, under the header "Agent record", with the same footer: "Next decision: <agent>" (the picked decision while it still waits, otherwise the longest wait) or "Nothing else needs you right now." The panel header and landmark read "Decisions" (true in every state, with "K need you" beside it only while decisions wait), or "Agent record" while a record is open. The failure decision says "The 1 step ... stays" or "The N steps ... stay". |
 | `AgentRecord` | its agent, its result items, its actions | What one agent did and what the user sent: current status line (two lines of fixed height, the full text in its tooltip); "You approved" with the full sent draft (To, Subject, other fields, body at its natural height, revision) and its effect class ("Irreversible: ...", red for irreversible); "You sent an edited version"; "You answered: ..."; "You retried: attempt N". The trace stays in the card. Then, below what the user did, its result items (`result.items` for that agent, marked "Updating" while the result is outdated and the run is not cancelled): a result arriving later is added under what the user is reading, not above it. |
 | `RetryButton` | its agent | The one Retry used by the panel and the partial result; in `decisions` mode it stores its outcome when the panel is about that agent or already shows an outcome; a retry from the result never replaces another agent's open decision or an open record. |
 | `EventLog` | raw log | Debug table of every event (region "Event log" inside the run card; #, seq with a late mark, time, type, agent, detail), late rows amber, failure rows red, Copy JSON (the button reads "Copied" or "Copy failed" for 2 s, from the clipboard promise). A debug view: closed by default, and when open it shows every event at full height (the page scrolls); it grows while events stream and may move the content below it. A fixed table layout with set column widths; type and agent are one line and the detail at most two (`ClampedText`, full text in the tooltip), so a long payload never widens the table. |
@@ -254,12 +254,12 @@ Component-local state: open trace (`AgentCard`), open event log (`TopBar`), the 
   13 / 15 / 12.5 / 22 / 28px sizes are type tokens (`text-label`, `text-title`, `text-code`, `text-heading`,
   `text-display`) next to Tailwind's steps.
 - Layout (boards 0, 1, 4): a centred column up to 1200px with "Wand - Agent console" above; one raised card
-  holds the request with Cancel run / Run again, the run line and the debug row (and the event log when open);
-  below it the agents (2fr) and the decision panel (3fr, sticky; a panel taller than the window scrolls on its
+  holds the request with Run again (Cancel run in its place while the run works), the run line and the debug
+  row (and the event log when open); below it the result across the full width once it arrives, then the agents (2fr) and the decision panel (3fr, sticky; a panel taller than the window scrolls on its
   own). The start card is centred with the debug row in its footer.
 - Run line (the run counts as working from an accepted Retry until the agent settles again, so Cancel run shows and
   the debug controls lock during that span): while the run works "M:SS into the run", "Running - N of M done", "K need you" and, on the right, "The
-  result appears above the agents when the run ends"; once it ends a state badge (Completed, Partial result, Run
+  result appears at the top when the run ends"; once it ends a state badge (Completed, Partial result, Run
   cancelled), "N of M done" and "took M:SS"; a cancel reads "Run cancelled at M:SS - N of M done". The line has a fixed height, so the
   badge replacing the plain word does not move what is below.
 - Status tones: colour means state only. Amber (`needs`, `needs-edge`, `needs-bar`) is "needs you" (approval or
@@ -302,46 +302,43 @@ Component-local state: open trace (`AgentCard`), open event log (`TopBar`), the 
   the speed buttons (e2e checks its opacity).
 - Question: options are bordered rows; the chosen one keeps the 1px width with the primary border and a light
   muted fill. "Or answer in your own words" is a Textarea of at least 120px, without a placeholder; holding the answer it gets the primary border.
-- Buttons: primary actions use the primary variant everywhere (Approve, Save, Send answer, Retry, Next
-  decision, Run again); secondary actions the outline variant. Colour belongs to bands, badges and the effect
+- Buttons: primary actions use the primary variant everywhere (Approve, Save, Send answer, Retry, Run again);
+  secondary actions the outline variant, Next decision included (it navigates, it acts on nothing). Colour belongs to bands, badges and the effect
   line, not to buttons.
 - Effect line: directly under the Approve / Edit buttons, normal size, semibold, with an alert icon:
   irreversible in the failed red, reading "Be careful, this action cannot be undone"; reversible ("You can undo
   this action later") and read only ("This action changes nothing") in the normal text colour; an unknown class as
-  "<Class>: <note>" ("Side effect: the agent acts on your behalf"). The record of an approval keeps
-  "<Class>: <note>" ("Irreversible: cannot be undone once it happens"), a fact about a done action.
+  "<Class>: <note>" ("Side effect: the agent acts on your behalf"). The record of an approval says it
+  as a fact: "This action cannot be undone" (red), "This action can be undone", "This action changed nothing";
+  an unknown class as "<Class>: <note>".
   Reason: the warning sits where the eye and the cursor are at the moment of clicking, not above the draft.
   Questions have no effect line.
 - Result: a band with an icon, the heading (Complete, Partial result, Updating, Run cancelled in a neutral band)
   and one truncated note line ("All N agents finished", the retry notes, "This is the result from before the run
   was cancelled. K of N agents had failed."), then the summary (at most 64ch); items in a two-column list (148px
   for the kind and the agent's label, which opens the agent's record; an error item is tinted red with its
-  Retry under its text; Updating dims the summary and the items to 72%) and sources as outline badges.
-- Debug row: speed 0.25x / 0.5x / 1x / 4x, Jitter, and the toggle "Event log (N)" / "Hide event log (N)".
+  Retry to the right of its text, in a fixed-width slot; Updating dims the summary and the items to 72%) and sources as outline badges.
+- Debug row: speed 0.25x / 0.5x / 1x / 2x / 4x, Jitter, and the toggle "Event log (N)" / "Hide event log (N)".
 - Event log: inside the run card; "N events received - K arrived late", Copy JSON, and a table with #, seq
   (with a "late" mark), time (UTC, to the millisecond), type, agent and detail ("state - status line",
   "act - detail", "N agents: types" for the plan), muted and wrapping; late rows amber, failure rows red.
-- Where the app differs from the boards, on purpose: the result sits above the agents in the left column, not
-  across the page, because a block across both columns would push the decision panel down when it arrives
-  (panel rule); the panel keeps the outcome after the run ends instead of "Nothing needs you" (an outcome stays
+- Where the app differs from the boards, on purpose: the panel keeps the outcome after the run ends instead of "Nothing needs you" (an outcome stays
   until the user moves); the outcome shows what was sent and the agent now, not a timeline; the debug row
   keeps Jitter and the event log count, and "Speed is set before a run" keeps its space when hidden; done cards
-  keep "Details in the panel" (the record); Retry is primary, not red (button rule above). Also:
+  keep "Details in the panel" (the record). Also:
   - every card keeps its footer link ("Details in the panel" while running, too) instead of "Attempt N": it
     is the keyboard and screen reader path to the panel; the attempt shows in the trace headers and the record;
   - the failure row of the trace shows the mock's status line verbatim ("Failed - ..." as sent), not a
     "Failed:" label with the prefix cut (texts from the mock are verbatim);
   - the card status line is one line with the full text in its tooltip, also for "Last status: ..." of a
     cancelled agent, so a long line never changes the card's height;
-  - the open event log shows every event at full height with the page scrolling, not a 600px box, as the owner
-    asked; it is a debug view;
+  - the open event log shows every event at full height with the page scrolling, not a 600px box: it is a
+    debug view;
   - the cancelled result band has no Run again of its own: the run card holds the one Run again;
   - the Complete note reads "All N agents finished" without "took M:SS": the run line shows the time once;
   - the chosen option keeps a 1px primary border with a muted fill instead of a 1px ring, the own-words field
     holding the answer keeps the same 1px primary border without the ring, and the effect line is normal size
-    (all above);
-  - Retry on an error item of the result sits under the error text, not to its right: the result is in the
-    narrower left column, where a slot beside the text squeezes it to a narrow strip.
+    (all above).
 
 ## 7. Data flow of one decision
 
@@ -393,7 +390,7 @@ in `src/test/fakeOrchestrator.ts`. Only `mockAlias.test.ts` loads the real mock.
 | `AgentList.test.tsx` | With the fake mock module: N agents give N cards, a fourth agent type, a card updated in place, trace order with the late step, the empty trace, Done kept after the late step. |
 | `PanelSelection.test.ts` | With the fake mock module: which decision the panel shows, the outcome kept after the run ends, the outcome first in `shownDecisionNow`, `select` vs `pin`. |
 | `Actions.test.tsx` | Against a fake orchestrator: approve and its outcome with no Approve left for a second click (the manager's guard against a second command is tested in `subscription.test.ts`), the outcome kept while the agent answers and the run ends with its second line following the agent, a card click on a pending agent opening its record, edit with kept text and the re-asked confirmation offered first, an unknown action named verbatim with a Target row, answers by option and by own words, cleared words giving the answer back to the option, a second question from the same agent starting empty, retry from the panel and from a partial result (the error row and the note kept as "Retrying..."), a refused command and its clearing (also a refused Retry from the result), the Next decision button (longest wait, no switch by itself, absent while nothing waits, added when a decision arrives), a decision that arrives not replacing the one on screen; focus after Edit, Cancel edit, Save, Approve and a card click, and not taken by a decision that opens in the empty panel. |
-| `AgentRecord.test.tsx` | The record shows the approved email after the gate closed; a result arriving later goes below "What you did"; an arriving decision does not replace an open record and N grows; Back to decisions returns to the pinned decision and shows no count when nothing waits; a refused command records nothing; the panel landmark is named after what it shows.; the selected card's link carries aria-current. |
+| `AgentRecord.test.tsx` | The record shows the approved email after the gate closed; a result arriving later goes below "What you did"; an arriving decision does not replace an open record and N grows; the record's Next decision returns to the pinned decision, and its footer says "Nothing else needs you right now." when nothing waits; a refused command records nothing; the panel landmark is named after what it shows.; the selected card's link carries aria-current. |
 | `CancelledRun.test.tsx` | Cancel mid-run with an open decision and a running agent: cards Cancelled with "Last status: ...", the queue empty and no command control left (also in a record), "Run cancelled", Run again; an open record stays; Run again starts with the edited request and clears screen state per section 2; a Run again the mock refuses returns to the start card with its message; Cancel before the plan shows the cancelled state, not "Planning..."; the console has one h1; Cancel during a retry after a partial result leaves the result with its own heading and no retrying note or row.; an accepted Retry on a partial result shows Cancel run, locks the debug controls and resumes the clock without the idle time.; the run line's live regions hold the phase, counts and need-you, not the clock; a spinner from Run again until the plan (run line and Planning...) and next to Running. |
 | `ModelError.test.tsx` | A handler that throws: the top bar warns "The screen may not match what the agents did", and later events still apply. |
 | `AppErrorFallback.test.tsx` | A render error shows the fallback; Start over calls `reset` (a stub manager, not the real one) and renders again. |
