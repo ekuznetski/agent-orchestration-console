@@ -21,7 +21,7 @@ mock orchestrator --events--> SubscriptionManager --apply(event)--> console stor
 | Store | `src/store/console.store.ts` | Zustand store holding `RunState` and `apply(e)`, which calls `reduce` with `Date.now()`. |
 | Derived data | `src/store/selectors.ts` | Pure functions over `RunState`: run header, phase, pending command, trace, decision queue. |
 | React access | `src/store/hooks.ts` | Small selector hooks so a component subscribes only to what it renders. One agent is read by reference (`useAgent`), so an event for another agent does not re-render it; objects and arrays built by selectors (`runHeader`, `decisionQueue`) are compared field by field (`useShallow`). |
-| Screen state | `src/store/view.store.ts` | Which decision is shown, receipt, request text, speed, jitter, run count, open edits, question answers. Not part of the run model. |
+| Screen state | `src/store/view.store.ts` | Which decision is shown, the outcome of the last action, request text, speed, jitter, run count, open edits, question answers. Not part of the run model. |
 | Labels | `src/config/agentTags.ts` | Words, icons and tones per tag, action, result kind and effect class, with generic fallbacks. |
 | Components | `src/components/console/*` | Rendering and user input only. |
 
@@ -31,17 +31,17 @@ Plain module functions (an ES module is already a singleton): `start`, `cancel`,
 `resolve`, `retry`.
 
 - `start(request, speed, jitter)`: stops the previous run, applies `run_reset`, clears screen state (selection,
-  receipt, edits) and counts the run in `view.store.runs`, creates a new orchestrator with the speed and jitter,
+  outcome, edits) and counts the run in `view.store.runs`, creates a new orchestrator with the speed and jitter,
   subscribes before `start()` (the mock delivers only events emitted after `subscribe`), then calls `start` and
   returns its boolean.
 - `cancel()`: unsubscribes, `reset()`s the mock (cancels its timers), applies `run_cancelled`.
 - `reset()`: used by the error fallback's "Start over"; stops the run and goes back to the start card.
 What each call clears in the view store (request, speed and jitter always stay):
 
-| Call | Run state | Selection, receipt | Open edits | `runs` |
+| Call | Run state | Selection, outcome | Open edits | `runs` |
 | --- | --- | --- | --- | --- |
 | `start` | reset, then the new run | cleared | edits and answers cleared | +1 |
-| `cancel` | kept, agents marked cancelled | receipt cleared | kept (nothing can be sent) | kept |
+| `cancel` | kept, agents marked cancelled | outcome cleared | kept (nothing can be sent) | kept |
 | `reset` | reset | cleared | edits and answers cleared | 0, so the start card shows |
 
 - Commands: the mock returns `true` when it accepted a command, `false` when the agent was not in a state
@@ -153,25 +153,43 @@ is not in the queue and gets no Retry; a failure without `error` is offered Retr
 | Field | Meaning |
 | --- | --- |
 | `mode` | `decisions` or `agent`: what the panel shows. `select(id)` and `backToDecisions()` set `decisions`; `openRecord(id)` sets `agent`. `start` and `reset` return to `decisions`; `cancel` keeps an open record. |
-| `selectedId` | The decision the user picked, kept while a record is open so "Back to decisions" returns to it. `select(id)` also clears the receipt; `pin(id)` does not. |
+| `selectedId` | The decision the user picked, kept while a record is open so "Back to decisions" returns to it. `select(id)` also clears the outcome; `pin(id)` does not. |
 | `recordId` | The agent whose record is open in `agent` mode. |
-| `receipt` | What the panel shows after approve, resolve or retry: `{ agentId, kind, ... }`. |
+| `outcome` | What the user sent, stored when the mock accepted the command: `{ agentId, kind, answer?, attempt? }` for approve, edit, resolve or retry. Never rebuilt from the run model, so it cannot disappear when the agent answers. The panel shows it until the user moves. |
+| `focusRequest` | A counter bumped by `select`, `openRecord` and `backToDecisions`; the panel moves focus to what it then shows. Reset to 0 by `start` and `reset`. |
 | `request`, `speed`, `jitter` | The request text and the mock's speed and jitter (creation options), shared by the start card and the top bar. |
 | `runs` | How many runs were started; the start card shows until the first run has its plan. |
-| `edits` | Per agent: an open editor `{ draft }`, or the version sent with edit() `{ draft, sent: true }`. Survives switching decisions. A sent entry is read only while the edit is pending and stays until the next Edit or a new run. |
+| `edits` | Per agent: an open editor `{ draft }`. Survives switching decisions; removed by Cancel edit and when the mock accepts the edit (what was sent is in the agent's actions). |
 | `answers` | Per agent: a question's picked option and typed words. Picking an option keeps the words; typing makes the words the answer. Survives switching decisions; cleared on a new run and on reset. |
 
 How the panel picks what to show (`hooks.ts`):
 
-- `useShownDecision`: the selected agent if it is still in `decisionQueue`, otherwise the first in the queue.
-  The panel pins what it shows (`pin`), so a gate that arrives later with a lower seq does not take its place.
-- `useVisibleReceipt`: the receipt, except after the run has ended with an empty queue; then the panel shows
-  "Nothing needs you right now". A visible receipt replaces the decision.
+- `useShownDecision`: the selected agent while it is in `waitingQueue` (the user can act on it), otherwise
+  the first in that queue. The panel pins what it shows (`pin`), so a gate that arrives later with a lower seq
+  does not take its place.
+- `useVisibleOutcome`: the outcome in `decisions` mode. A stored outcome replaces the decision and stays,
+  also after the run ends, until the user picks something else.
 - `useIsShown` and `shownDecisionNow`: the agent the panel is about: the open record's agent in `agent` mode,
-  otherwise the receipt's agent first, then the shown decision. The card ring and connector use the first;
+  otherwise the outcome's agent first, then the shown decision. The card ring and connector use the first;
   `RetryButton` uses the second at click time.
-- Receipts and the 3 s auto-advance work only in `decisions` mode: an open record stays on screen whatever
-  streams in, new decisions included, until the user moves.
+
+### The panel rule
+
+Async events never move, resize or replace what the user is reading or the control under the cursor; only the
+user's click switches the panel. Focus stays where the user put it. In practice:
+
+- A decision that arrives does not replace a shown decision, outcome or record. It is announced by its card
+  badge, "K need you" in the header and the "Next decision" button under an outcome. The one exception is the
+  empty panel ("Nothing needs you right now ... New decisions open here"): the first decision that arrives
+  opens there, since nothing is being read.
+- The outcome's second line and the button slot under it change in place: the second line is one truncated
+  line, and the slot keeps its height whether it holds the button or "Nothing else needs you right now."
+- There is no auto-advance and no Prev / Next: the user moves by the Next decision button or a card click.
+- Focus moves only after the user's own action, to the next sensible control: Edit focuses the editor's first
+  field; an outcome (after Save, Approve, Send answer, Retry) focuses the Next decision button, or the outcome
+  line when nothing waits; a card click, Next decision or Back to decisions focuses the shown decision (a group
+  labelled with the agent) or the record's heading. A decision that opens in the empty panel by itself does
+  not take focus.
 
 Component-local state: open trace (`AgentCard`), open event log (`TopBar`), the refused-command text.
 
@@ -182,12 +200,12 @@ Component-local state: open trace (`AgentCard`), open event log (`TopBar`), the 
 | `App` | plan order, plan task, run key, `runs` | Start card until the first plan; then top bar, result, agents, decision panel. Cards are keyed by run so a new run remounts them. |
 | `StartCard` (`TopBar.tsx`) | request, speed, jitter, `runs` | Request, speed and jitter before the first run; "Starting..." and off until the plan arrives; off for an empty request. |
 | `TopBar` | run header, plan task, log size | Request (shows `plan.task` while the run works), Cancel run / Run again, one-line summary (with "The screen may not match what the agents did" while `modelError` is set, until the next run), Debug row (speed and jitter are fixed during a run), event log toggle. |
-| `ResultBlock` | latest result, run header, request, speed, jitter | The result above the agents, appearing once it arrives (when it first appears it pushes the agents down once per run: the one allowed stream-caused layout shift); complete, partial, updating (outdated) or cancelled; Retry on an error item that is still in the queue (the partial note says "retry it" only then); after a cancel a result that already arrived stays, marked "From before the run was cancelled.", with no Retry (Run again is in the top bar). |
-| `AgentCard` | its agent, in queue, is shown | Label, badge, one truncated status line, Show steps. Clicking the card selects it: an agent with an open decision shows that decision, any other agent opens its record in the panel. Footer button (the keyboard path): "Decision in the panel" for an approval or a question, "Retry in the panel" for a retryable failure (Retry is in the panel only), otherwise "Details in the panel". Fixed badge column. The status line is the newest of the status and the last step (after an answer the agent reports a step before its next status); failed keeps its status line; a cancelled agent shows "Last status: " + its last status line. The selected card (a decision or a record) gets the ring and connector. |
+| `ResultBlock` | latest result, run header, request, speed, jitter | The result above the agents, appearing once it arrives (when it first appears it pushes the agents down once per run: the one allowed stream-caused layout shift); complete, partial, updating (outdated) or cancelled; Retry on an error item whose agent the user can retry now (the partial note says "retry it" only then); after the click the item's button row and the note keep their place and read "Retrying..." (the note: "Retrying... This result updates when the agent finishes.") until a newer result replaces the block, so a retry from the result does not move the agents; after a cancel a result that already arrived stays, marked "From before the run was cancelled.", with no Retry (Run again is in the top bar). |
+| `AgentCard` | its agent, waiting for the user, is shown | Label, badge, one truncated status line, Show steps. Clicking the card selects it: an agent the user can act on now (in `waitingQueue`) shows its decision; any other agent, one whose command is still pending included, opens its record in the panel. Footer button (the keyboard path): "Decision in the panel" for an approval or a question, "Retry in the panel" for a retryable failure (Retry is in the panel only), otherwise "Details in the panel". Fixed badge column. The status line is the newest of the status and the last step (after an answer the agent reports a step before its next status); failed keeps its status line; a cancelled agent shows "Last status: " + its last status line. The selected card (a decision, an outcome or a record) gets the ring and connector. |
 | `AgentTrace` | its agent | `traceOf`; "Attempt N" dividers appear once there is a second attempt; a "Working" row with the status line while the agent runs, only if that status is newer than its last gate and the attempt has steps; empty text without steps. An open trace is capped at 400px with its own scroll; a new step scrolls it to the bottom unless the user scrolled up. |
-| `DecisionPanel` | queue, shown decision, receipt, waiting count | One decision at a time with "N of M" and Prev/Next; failure, confirmation (view, editor, waiting for the edited version, edited version) or question; receipts after approve, resolve, retry with "Next: ...", or "Nothing needs you right now" when nothing else waits. After 3 seconds a receipt opens the next decision by itself, only if one was waiting when the user acted; which one is read when the time is up. Going back to a decision whose command is still pending shows its receipt (rebuilt from the model and the stored answer), so the agent's next event cannot swap another decision in. Empty: "The agents are starting" while every agent is queued, otherwise worded by phase. In `agent` mode the panel shows the record instead, with "Back to decisions (N)" (N = waiting decisions) in the header; Prev / Next navigate decisions only. |
+| `DecisionPanel` | shown decision, outcome, waiting count | One decision at a time: failure, confirmation (view, editor, edited version) or question. After an accepted command the outcome replaces the decision: the first line is what was sent ("Approved", "Edited version sent", "Answer sent: ...", "Retry sent: attempt N"), the second line is the agent now ("Waiting for the agent to respond." while the command is pending, then "Now: <tag> - <status line>"). Under it, in a slot of fixed height, "Next decision: <agent>" when a decision waits (the outcome's own agent first when it asks again, otherwise the longest wait), or "Nothing else needs you right now."; the switch happens only on click. Empty: "The agents are starting" while every agent is queued, otherwise worded by phase. In `agent` mode the panel shows the record instead, with "Back to decisions (N)" (N = waiting decisions) in the header. |
 | `AgentRecord` | its agent, its result items, its actions | What one agent did and what the user sent: current status line; its result items (`result.items` for that agent, marked "Updating" while the result is outdated); "You approved" with the full sent draft (To, Subject, other fields, body, revision); "You sent an edited version"; "You answered: ..."; "You retried: attempt N". The trace stays in the card. |
-| `RetryButton` | its agent | The one Retry used by the panel and the partial result; in `decisions` mode it shows a receipt when the panel is about that agent or already shows a receipt; a retry from the result never replaces another agent's open decision or an open record. |
+| `RetryButton` | its agent | The one Retry used by the panel and the partial result; in `decisions` mode it stores its outcome when the panel is about that agent or already shows an outcome; a retry from the result never replaces another agent's open decision or an open record. |
 | `EventLog` | raw log | Debug table of every event, late rows marked, failure rows red, Copy JSON. |
 | `AppErrorFallback` | - | Error boundary fallback with "Start over" (`SubscriptionManager.reset`). |
 
@@ -195,22 +213,23 @@ Component-local state: open trace (`AgentCard`), open event log (`TopBar`), the 
 
 1. The mock emits `confirmation_required` (seq 20). `apply` -> `reduce` stores the gate; `tagOf` gives
    `needs_approval`; the card badge changes in place.
-2. `decisionQueue` now holds the agent; the panel shows it if nothing else is shown, and pins it
-   (`pin`) so an out-of-order gate with a lower seq never swaps the content under the cursor.
+2. `decisionQueue` and `waitingQueue` now hold the agent; the panel shows it if the panel is empty, and pins
+   it (`pin`) so an out-of-order gate with a lower seq never swaps the content under the cursor. If another
+   decision or an outcome is on screen, only the badge, the header count and the Next decision button change.
 3. Approve: `SubscriptionManager.approve(id)` -> mock returns true -> `command_sent` -> `pendingCommand`
-   is `approve`; the receipt "Approved" replaces the decision in the panel. Going back to that decision
-   before the agent answers shows its receipt, not the decision.
-4. The agent's next event (a step, seq 21) answers the command: `pendingCommand` is null, the
-   gate is closed, the tag is `running`; the receipt words follow the agent's real state.
-5. Edit instead: Edit opens the editor (`edits[id] = { draft }`); Save calls `edit(id, draft)`; on true
-   the entry becomes `{ draft, sent: true }`. The panel stays on this decision ("Edited version sent to
-   the agent", disabled "Waiting for the agent..."), because `needsUser` keeps an agent with a pending
-   edit in the queue. The re-emitted confirmation (revision 2) keeps `openedSeq`, so `pendingCommand`
-   becomes null, and the panel shows "Send the edited email?" with Approve in the same place. Draft fields
-   other than subject and body are sent back unchanged; an empty subject or body cannot be saved. The To row (`target`) is shown read-only both in the editor and
-   while waiting for the agent after Save.
+   is `approve`; the panel stores the outcome "Approved" with "Waiting for the agent to respond." and it
+   replaces the decision. The agent leaves `waitingQueue`, so its card now opens the record.
+4. The agent's next event (a step, seq 21) answers the command: `pendingCommand` is null, the gate is closed,
+   the tag is `running`; the outcome's second line becomes "Now: Running - <status line>". The first line
+   never changes.
+5. Edit instead: Edit opens the editor (`edits[id] = { draft }`); Save calls `edit(id, draft)`; on true the
+   editor closes and the outcome "Edited version sent" shows. The re-emitted confirmation (revision 2) keeps
+   `openedSeq`, so `pendingCommand` becomes null; the agent is back in `waitingQueue` and the button reads
+   "Next decision: Drafting" (the outcome's own agent first). Its click shows "Send the edited email?" with
+   Approve. Draft fields other than subject and body are sent back unchanged; an empty subject or body cannot
+   be saved. The To row (`target`) is shown read-only in the editor.
 6. Question: the picked option sends its id to `resolve`, otherwise the trimmed own words; the chosen one has
-   the dark border. Then a receipt as in 3.
+   the dark border. Then an outcome as in 3, with the answer text that was sent.
 
 ## 8. Contract traps
 
@@ -235,11 +254,11 @@ rules).
 | `selectors.test.ts` | Run header, pending command, the retry lifecycle, trace grouping, decision queue order (edit keeps its place), retryable, status line. |
 | `subscription.test.ts` | The manager against a fake orchestrator (the real mock is never loaded): subscribe before start asserted directly, speed and jitter passed, a second start stops the previous run, commands recorded only when accepted, `afterSeq` read before the call, a pending command not sent again, what `start`, `cancel` and `reset` clear. |
 | `AgentList.test.tsx` | N agents give N cards, a fourth agent type, a card updated in place, trace order with the late step, the empty trace, Done kept after the late step. |
-| `PanelSelection.test.ts` | Which decision the panel shows, the receipt hidden after the run ends with an empty queue, receipt first in `shownDecisionNow`, `select` vs `pin`. |
-| `Actions.test.tsx` | Against a fake orchestrator: approve and its receipt, a double click sent once, the receipt shown again for a pending command, edit with kept text and re-approval, an unknown action, answers by option and by own words, retry from the panel and from a partial result, a refused command and its clearing, auto-advance only to a decision waiting at action time. |
-| `AgentRecord.test.tsx` | The record shows the approved email after the gate closed; an arriving decision does not replace an open record and N grows; auto-advance does not leave a record; Back to decisions returns to the pinned decision; a refused command records nothing. |
+| `PanelSelection.test.ts` | Which decision the panel shows, the outcome kept after the run ends, the outcome first in `shownDecisionNow`, `select` vs `pin`. |
+| `Actions.test.tsx` | Against a fake orchestrator: approve and its outcome, a double click sent once, the outcome kept while the agent answers and the run ends with its second line following the agent, a card click on a pending agent opening its record, edit with kept text and the re-asked confirmation offered first, an unknown action, answers by option and by own words, retry from the panel and from a partial result (the error row and the note kept as "Retrying..."), a refused command and its clearing, the Next decision button (longest wait, no switch by itself, absent while nothing waits, added when a decision arrives), a decision that arrives not replacing the one on screen; focus after Edit, Save, Approve and a card click, and not taken by a decision that opens in the empty panel. |
+| `AgentRecord.test.tsx` | The record shows the approved email after the gate closed; an arriving decision does not replace an open record and N grows; Back to decisions returns to the pinned decision; a refused command records nothing. |
 | `CancelledRun.test.tsx` | Cancel mid-run with an open decision and a running agent: cards Cancelled with "Last status: ...", the queue empty, "Run cancelled", Run again; an open record stays; Run again starts with the edited request and clears screen state per section 2. |
 | `ModelError.test.tsx` | A handler that throws: the top bar warns "The screen may not match what the agents did", and later events still apply. |
 | `AppErrorFallback.test.tsx` | A render error shows the fallback; Start over calls `reset` (a stub manager, not the real one) and renders again. |
 | `mockAlias.test.ts` | The `@mock` alias loads the real mock (the only unit test that touches it). |
-| `e2e/definition-of-done.e2e.ts` | Each Definition-of-done item from the task text in a real browser with the real mock at 4x (0.25x for the empty trace and the wait after Edit, so those states are asserted strictly), plus a partial result retried from the result and Cancel / Run again. Every wait is on UI state. Two Playwright projects run the whole file without and with the mock's jitter, set through the UI. |
+| `e2e/definition-of-done.e2e.ts` | Each Definition-of-done item from the task text in a real browser with the real mock at 4x (0.25x for the empty trace and the wait after Edit, so those states are asserted strictly), plus a partial result retried from the result (the agent cards keep their position while it retries) and Cancel / Run again. Every wait is on UI state. Two Playwright projects run the whole file without and with the mock's jitter, set through the UI. |

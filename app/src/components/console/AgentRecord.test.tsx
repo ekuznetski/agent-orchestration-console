@@ -71,14 +71,13 @@ beforeEach(() => {
 })
 
 afterEach(() => {
-  vi.useRealTimers()
   act(() => reset())
 })
 
 describe('agent record', () => {
   it('shows the approved email after the gate has closed', () => {
     setup()
-    click('Next')
+    openCard('drafting')
     click('Approve and send')
     step('drafting')
     status('drafting', 'done')
@@ -99,21 +98,9 @@ describe('agent record', () => {
     expect(panel().getByRole('button', { name: 'Back to decisions (2)' })).toBeTruthy()
   })
 
-  it('is not left by the 3 s auto-advance', () => {
-    vi.useFakeTimers()
-    setup()
-    click('Retry')
-    expect(panel().getByText('opens in 3 s')).toBeTruthy()
-    status('research', 'running', { attempt: 2 })
-    openCard('research')
-    act(() => vi.advanceTimersByTime(3000))
-    expect(panel().getByText('Agent record')).toBeTruthy()
-    expect(panel().getByText('You retried: attempt 2')).toBeTruthy()
-  })
-
   it('Back to decisions returns to the pinned decision', () => {
     setup()
-    click('Next')
+    openCard('drafting')
     expect(panel().getByText('Send this email?')).toBeTruthy()
     status('research', 'running', { attempt: 2 })
     openCard('research')
@@ -124,7 +111,7 @@ describe('agent record', () => {
 
   it('records nothing for a refused command', () => {
     setup()
-    click('Next')
+    openCard('drafting')
     fakeOrchestrator.approve.mockReturnValueOnce(false)
     click('Approve and send')
     status('drafting', 'done')

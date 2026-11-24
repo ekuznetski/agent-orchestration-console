@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import { useEffect, useRef, type ReactNode } from 'react'
 import type { ConfirmationRequiredEvent, Draft, EscalationRequiredEvent } from '@mock/orchestrator.js'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -7,13 +7,12 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { Textarea } from '@/components/ui/textarea'
 import { actionLabels, effectClassLabel, toneColor } from '@/config/agentTags'
 import type { AgentModel, Gate } from '@/store/console.reducer'
-import { pendingCommand } from '@/store/selectors'
-import { useViewStore, type Answer } from '@/store/view.store'
+import { useViewStore, type Answer, type Outcome } from '@/store/view.store'
 import { approve, edit, resolve } from '@/subscriptionManager/subscription'
 import { REFUSED, RetryButton } from './RetryButton'
 
-/** Runs a command and reports whether the mock accepted it; on true the panel records a receipt. */
-export type Act = (agentId: string, send: () => boolean, receipt?: { kind: 'approve' | 'resolve'; answer?: string }) => boolean
+/** Runs a command and reports whether the mock accepted it; on true the panel stores the outcome with what was sent. */
+export type Act = (agentId: string, send: () => boolean, sent: Omit<Outcome, 'agentId'>) => boolean
 
 const Row = ({ label, children }: { label: string; children: ReactNode }) => (
   <>
@@ -34,7 +33,7 @@ function EffectLine({ effectClass }: { effectClass: string }) {
 }
 
 /** Every field that will be sent: To, subject, other draft keys as name: value, then the body. */
-function DraftFields({ target, draft, showBody = true }: { target: string; draft: Draft; showBody?: boolean }) {
+function DraftFields({ target, draft }: { target: string; draft: Draft }) {
   const { subject, body, ...rest } = draft
   return (
     <>
@@ -47,9 +46,7 @@ function DraftFields({ target, draft, showBody = true }: { target: string; draft
           </Row>
         ))}
       </div>
-      {showBody && body !== undefined && (
-        <div className="bg-muted max-h-[220px] overflow-auto rounded-sm border p-2 whitespace-pre-wrap">{body}</div>
-      )}
+      {body !== undefined && <div className="bg-muted max-h-[220px] overflow-auto rounded-sm border p-2 whitespace-pre-wrap">{body}</div>}
     </>
   )
 }
@@ -61,9 +58,16 @@ function Editor({ agent, gate, refused, act }: { agent: AgentModel; gate: Confir
   const draft = entry?.draft ?? gate.draft
   const change = (key: 'subject' | 'body', value: string) => setEdit(agent.id, { draft: { ...draft, [key]: value } })
   const empty = (draft.subject !== undefined && draft.subject.trim() === '') || (draft.body !== undefined && draft.body.trim() === '')
+  const subjectRef = useRef<HTMLInputElement>(null)
+  const bodyRef = useRef<HTMLTextAreaElement>(null)
+
+  // The editor mounts on the user's Edit click (or their return to an open editor): focus its first field.
+  useEffect(() => {
+    ;(subjectRef.current ?? bodyRef.current)?.focus()
+  }, [])
 
   const save = () => {
-    if (act(agent.id, () => edit(agent.id, draft))) setEdit(agent.id, { draft, sent: true })
+    if (act(agent.id, () => edit(agent.id, draft), { kind: 'edit' })) setEdit(agent.id, null)
   }
 
   return (
@@ -79,7 +83,7 @@ function Editor({ agent, gate, refused, act }: { agent: AgentModel; gate: Confir
           <Label htmlFor={`subject-${agent.id}`} className="text-muted-foreground font-normal">
             Subject
           </Label>
-          <Input id={`subject-${agent.id}`} value={draft.subject} onChange={(e) => change('subject', e.target.value)} />
+          <Input ref={subjectRef} id={`subject-${agent.id}`} value={draft.subject} onChange={(e) => change('subject', e.target.value)} />
         </>
       )}
       {draft.body !== undefined && (
@@ -88,6 +92,7 @@ function Editor({ agent, gate, refused, act }: { agent: AgentModel; gate: Confir
             {labels.bodyLabel}
           </Label>
           <Textarea
+            ref={bodyRef}
             id={`body-${agent.id}`}
             value={draft.body}
             onChange={(e) => change('body', e.target.value)}
@@ -114,24 +119,8 @@ export function ConfirmationDecision({ agent, gate, refused, act }: { agent: Age
   const labels = actionLabels(event.action)
   const entry = useViewStore((state) => state.edits[agent.id])
   const setEdit = useViewStore((state) => state.setEdit)
-  const pending = pendingCommand(agent)
 
-  if (pending?.kind === 'edit') {
-    // edit() was accepted; the agent has not asked again yet, so nothing can be approved.
-    return (
-      <div className="flex flex-col gap-2.5">
-        <h3 className="text-[15px] font-bold">Edited version sent to the agent</h3>
-        <p className="text-muted-foreground">Waiting for it to ask again before you can approve.</p>
-        <DraftFields target={event.target} draft={entry?.draft ?? event.draft} showBody={false} />
-        <div>
-          <Button disabled>Waiting for the agent...</Button>
-        </div>
-        <EffectLine effectClass={event.effectClass} />
-      </div>
-    )
-  }
-
-  if (entry && !entry.sent) return <Editor agent={agent} gate={event} refused={refused} act={act} />
+  if (entry) return <Editor agent={agent} gate={event} refused={refused} act={act} />
 
   return (
     <div className="flex flex-col gap-2.5">
@@ -141,10 +130,8 @@ export function ConfirmationDecision({ agent, gate, refused, act }: { agent: Age
       </div>
       <DraftFields target={event.target} draft={event.draft} />
       <div className="flex gap-2">
-        <Button disabled={pending !== null} onClick={() => act(agent.id, () => approve(agent.id), { kind: 'approve' })}>
-          {pending ? 'Sending...' : labels.approve}
-        </Button>
-        <Button variant="outline" disabled={pending !== null} onClick={() => setEdit(agent.id, { draft: event.draft })}>
+        <Button onClick={() => act(agent.id, () => approve(agent.id), { kind: 'approve' })}>{labels.approve}</Button>
+        <Button variant="outline" onClick={() => setEdit(agent.id, { draft: event.draft })}>
           {labels.edit}
         </Button>
       </div>
@@ -155,7 +142,7 @@ export function ConfirmationDecision({ agent, gate, refused, act }: { agent: Age
 }
 
 /** The answer the user would send: the picked option's label or the typed words. */
-export function answerText(gate: EscalationRequiredEvent, answer: Answer | undefined): string | null {
+function answerText(gate: EscalationRequiredEvent, answer: Answer | undefined): string | null {
   if (!answer) return null
   if (answer.use === 'words') return answer.words.trim() || null
   return gate.options.find((option) => option.id === answer.optionId)?.label ?? null

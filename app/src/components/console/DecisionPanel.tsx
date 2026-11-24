@@ -1,16 +1,13 @@
-import { useEffect, useState } from 'react'
-import type { EscalationRequiredEvent } from '@mock/orchestrator.js'
+import { useEffect, useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
-import { TAGS, actionLabels, agentType, toneColor } from '@/config/agentTags'
+import { TAGS, agentType, toneColor } from '@/config/agentTags'
 import type { AgentModel } from '@/store/console.reducer'
 import { useConsoleStore } from '@/store/console.store'
-import { useDecisionQueue, useShownDecision, useVisibleReceipt } from '@/store/hooks'
-import { pendingCommand, phaseOf, waitingQueue } from '@/store/selectors'
-import { useViewStore, type Receipt } from '@/store/view.store'
+import { useShownDecision, useVisibleOutcome } from '@/store/hooks'
+import { pendingCommand, phaseOf, statusLineOf, waitingQueue } from '@/store/selectors'
+import { useViewStore, type Outcome } from '@/store/view.store'
 import { AgentRecord } from './AgentRecord'
-import { ConfirmationDecision, FailureDecision, QuestionDecision, answerText, type Act } from './DecisionViews'
-
-const AUTO_ADVANCE_MS = 3000
+import { ConfirmationDecision, FailureDecision, QuestionDecision, type Act } from './DecisionViews'
 
 function emptyLine(phase: ReturnType<typeof phaseOf>, allQueued: boolean): string {
   if (phase === 'idle' || allQueued) return 'The agents are starting. New decisions open here.'
@@ -18,15 +15,6 @@ function emptyLine(phase: ReturnType<typeof phaseOf>, allQueued: boolean): strin
   if (phase === 'finishing') return 'The agents are done. The result appears above the agents.'
   if (phase === 'cancelled') return 'The run was cancelled.'
   return 'The run is finished. The result is above the agents.'
-}
-
-/** What the decision asks, in a few words: used for "Up next". */
-function decisionTitle(agent: AgentModel): string {
-  if (agent.tag === 'failed') return 'Retry this agent?'
-  const event = agent.gate!.event
-  if (event.type === 'escalation_required') return event.question
-  const labels = actionLabels(event.action)
-  return agent.gate!.revision > 1 ? labels.editedTitle : labels.title
 }
 
 function EmptyState() {
@@ -40,109 +28,109 @@ function EmptyState() {
   )
 }
 
-/** What happened after approve, answer or retry, plus what is up next. */
-function ReceiptView({ receipt, onNext }: { receipt: Receipt; onNext: (id: string) => void }) {
-  const agent = useConsoleStore((state) => state.agents[receipt.agentId])
-  const next = useConsoleStore((state) => waitingQueue(state).find((id) => id !== receipt.agentId) ?? null)
-  const nextAgent = useConsoleStore((state) => (next ? state.agents[next] : null))
+/** What was sent: fixed once the mock accepted it. */
+function sentLine(outcome: Outcome): string {
+  if (outcome.kind === 'approve') return 'Approved'
+  if (outcome.kind === 'edit') return 'Edited version sent'
+  if (outcome.kind === 'resolve') return `Answer sent: ${outcome.answer}`
+  return `Retry sent: attempt ${outcome.attempt}`
+}
 
-  const title =
-    receipt.kind === 'approve'
-      ? 'Approved'
-      : receipt.kind === 'resolve'
-        ? `Answer sent: ${receipt.answer}`
-        : `Retried - attempt ${receipt.attempt} is running`
+/** Where the agent is now, from the model. */
+function nowLine(agent: AgentModel): string {
+  if (pendingCommand(agent)) return 'Waiting for the agent to respond.'
+  return `Now: ${TAGS[agent.tag].label} - ${statusLineOf(agent) ?? ''}`
+}
+
+/** The outcome of the user's last action, and the way to the next decision. Nothing here moves by itself:
+ * the second line changes text in place, and the button slot keeps its height whether it holds a button or not. */
+function OutcomeView({ outcome, onNext }: { outcome: Outcome; onNext: (id: string) => void }) {
+  const agent = useConsoleStore((state) => state.agents[outcome.agentId])
+  // The same agent asking again comes first: it continues what the user just did. Then the longest wait.
+  const next = useConsoleStore((state) => {
+    const queue = waitingQueue(state)
+    return queue.includes(outcome.agentId) ? outcome.agentId : (queue[0] ?? null)
+  })
+  const nextAgent = useConsoleStore((state) => (next ? state.agents[next] : null))
+  const now = nowLine(agent)
+  const statusRef = useRef<HTMLDivElement>(null)
+  const nextRef = useRef<HTMLButtonElement>(null)
+
+  // An outcome mounts only after the user's action; the control that went away had focus, so focus moves
+  // to the Next decision button, or to the outcome itself when nothing waits.
+  useEffect(() => {
+    ;(nextRef.current ?? statusRef.current)?.focus()
+  }, [])
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="bg-muted flex flex-col gap-0.5 rounded-md px-3.5 py-3" role="status">
-        <b style={{ color: 'var(--tone-success)' }}>{title}</b>
-        <span className="text-muted-foreground">{agent.label} continues; its card on the left shows what it does next.</span>
+      <div ref={statusRef} tabIndex={-1} className="bg-muted flex flex-col gap-0.5 rounded-md px-3.5 py-3 outline-none" role="status">
+        <b className="break-words" style={{ color: 'var(--tone-success)' }}>
+          {sentLine(outcome)}
+        </b>
+        <span className="text-muted-foreground truncate" title={now}>
+          {now}
+        </span>
       </div>
-      {nextAgent ? (
-        <div className="flex flex-col gap-2 border-t pt-2">
-          <span>
-            Up next: <b>{agentType(nextAgent.type).name}</b> - {decisionTitle(nextAgent)}
-          </span>
-          <div className="flex items-center gap-2">
-            <Button onClick={() => onNext(nextAgent.id)}>Next: {agentType(nextAgent.type).name}</Button>
-            {receipt.waitingAtAction.includes(nextAgent.id) && <span className="text-muted-foreground">opens in 3 s</span>}
-          </div>
-        </div>
-      ) : (
-        <EmptyState />
-      )}
+      <div className="flex min-h-8 items-center">
+        {nextAgent ? (
+          <Button ref={nextRef} onClick={() => onNext(nextAgent.id)}>
+            Next decision: {agentType(nextAgent.type).name}
+          </Button>
+        ) : (
+          <span className="text-muted-foreground">Nothing else needs you right now.</span>
+        )}
+      </div>
     </div>
   )
 }
 
-/** One decision at a time, "N of M", Prev / Next. The decision on screen stays pinned until the user moves. */
+/** One decision at a time. What it shows changes only on the user's click: a decision that arrives does not
+ * replace the shown decision or outcome; it is announced by its card badge, the header count and the Next
+ * decision button. */
 export function DecisionPanel() {
-  const queue = useDecisionQueue()
   const shownId = useShownDecision()
-  const receipt = useVisibleReceipt()
+  const outcome = useVisibleOutcome()
   const selectedId = useViewStore((state) => state.selectedId)
   const recordId = useViewStore((state) => (state.mode === 'agent' ? state.recordId : null))
   const backToDecisions = useViewStore((state) => state.backToDecisions)
   const recordAgent = useConsoleStore((state) => (recordId ? state.agents[recordId] : null))
   const waitingCount = useConsoleStore((state) => waitingQueue(state).length)
-  const answers = useViewStore((state) => state.answers)
   const select = useViewStore((state) => state.select)
   const pin = useViewStore((state) => state.pin)
-  const setReceipt = useViewStore((state) => state.setReceipt)
+  const setOutcome = useViewStore((state) => state.setOutcome)
   const agent = useConsoleStore((state) => (shownId ? state.agents[shownId] : null))
+  const focusRequest = useViewStore((state) => state.focusRequest)
   const [refusedId, setRefusedId] = useState<string | null>(null)
+  const recordRef = useRef<HTMLHeadingElement>(null)
+  const decisionRef = useRef<HTMLDivElement>(null)
+
+  // Only the user's moves request focus; a decision that opens in the empty panel by itself leaves focus alone.
+  useEffect(() => {
+    if (focusRequest > 0) (recordRef.current ?? decisionRef.current)?.focus()
+  }, [focusRequest])
 
   // Pin what is shown, so a decision that arrives later with a lower seq never takes its place.
   useEffect(() => {
     if (shownId && shownId !== selectedId) pin(shownId)
   }, [shownId, selectedId, pin])
 
-  // After a receipt, open the next decision by itself, but only one that was already waiting when the user acted.
-  useEffect(() => {
-    if (!receipt) return
-    const timer = setTimeout(() => {
-      const next = waitingQueue(useConsoleStore.getState()).find((id) => id !== receipt.agentId && receipt.waitingAtAction.includes(id))
-      // Never leave an open record: auto-advance works only in decisions mode.
-      if (next && useViewStore.getState().mode === 'decisions') useViewStore.getState().select(next)
-    }, AUTO_ADVANCE_MS)
-    return () => clearTimeout(timer)
-  }, [receipt])
-
   const move = (id: string) => {
     setRefusedId(null)
     select(id)
   }
 
-  const act: Act = (agentId, send, done) => {
-    const waitingAtAction = waitingQueue(useConsoleStore.getState()).filter((id) => id !== agentId)
+  // The outcome is stored when the mock accepts the command, with what was sent.
+  const act: Act = (agentId, send, sent) => {
     const accepted = send()
     setRefusedId(accepted ? null : agentId)
-    if (accepted && done) setReceipt({ agentId, waitingAtAction, ...done })
+    if (accepted) setOutcome({ agentId, ...sent })
     return accepted
   }
 
-  // Going back to a decision whose command is still pending shows its receipt, rebuilt from the model.
-  const pending = agent ? pendingCommand(agent) : null
-  const rebuilt: Receipt | null =
-    agent && pending && pending.kind !== 'edit'
-      ? {
-          agentId: agent.id,
-          kind: pending.kind,
-          answer:
-            pending.kind === 'resolve'
-              ? (answerText(agent.gate!.event as EscalationRequiredEvent, answers[agent.id]) ?? undefined)
-              : undefined,
-          attempt: agent.attempts[agent.attempts.length - 1].n + 1,
-          waitingAtAction: [],
-        }
-      : null
-  const shownReceipt = receipt ?? rebuilt
-
-  const index = shownId ? queue.indexOf(shownId) : -1
   const edge = recordAgent
     ? toneColor(TAGS[recordAgent.tag].tone)
-    : receipt
+    : outcome
       ? 'var(--tone-success)'
       : agent
         ? toneColor(TAGS[agent.tag].tone)
@@ -160,7 +148,9 @@ export function DecisionPanel() {
       {recordId ? (
         <>
           <div className="flex items-center justify-between gap-2">
-            <h2 className="text-sm font-bold">Agent record</h2>
+            <h2 ref={recordRef} tabIndex={-1} className="text-sm font-bold outline-none">
+              Agent record
+            </h2>
             <Button variant="outline" size="sm" onClick={backToDecisions}>
               Back to decisions ({waitingCount})
             </Button>
@@ -169,26 +159,17 @@ export function DecisionPanel() {
         </>
       ) : (
         <>
-          <div className="flex items-center justify-between gap-2">
-            <h2 className="text-sm font-bold">Decisions waiting for you</h2>
-            {agent && !receipt && (
-              <div className="text-muted-foreground flex items-center gap-1.5">
-                <Button variant="outline" size="sm" disabled={index <= 0} onClick={() => move(queue[index - 1])}>
-                  Prev
-                </Button>
-                <span>
-                  {index + 1} of {queue.length}
-                </span>
-                <Button variant="outline" size="sm" disabled={index >= queue.length - 1} onClick={() => move(queue[index + 1])}>
-                  Next
-                </Button>
-              </div>
-            )}
-          </div>
-          {shownReceipt ? (
-            <ReceiptView receipt={shownReceipt} onNext={move} />
+          <h2 className="text-sm font-bold">Decisions waiting for you</h2>
+          {outcome ? (
+            <OutcomeView key={`${outcome.agentId}-${outcome.kind}`} outcome={outcome} onNext={move} />
           ) : agent ? (
-            <>
+            <div
+              ref={decisionRef}
+              tabIndex={-1}
+              role="group"
+              aria-label={`${agentType(agent.type).name} - ${agent.label}`}
+              className="flex flex-col gap-2.5 outline-none"
+            >
               <div className="text-muted-foreground">
                 {agentType(agent.type).name} - {agent.label}
               </div>
@@ -199,7 +180,7 @@ export function DecisionPanel() {
               ) : agent.gate?.event.type === 'escalation_required' ? (
                 <QuestionDecision agent={agent} gate={agent.gate} refused={refusedId === agent.id} act={act} />
               ) : null}
-            </>
+            </div>
           ) : (
             <EmptyState />
           )}

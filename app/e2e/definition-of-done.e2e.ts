@@ -44,7 +44,7 @@ test('3. an expanded line shows its ordered trace; an agent without steps shows 
 })
 
 test('4. a confirmation does not fire until approved; Edit forces a fresh approval', async ({ page, jitter }) => {
-  // 0.25x, so the state between Save and the re-asked confirmation is on screen long enough to assert.
+  // 0.25x, so the wait between Save and the re-asked confirmation is on screen long enough to assert.
   test.setTimeout(120_000)
   await startRun(page, jitter, '0.25x')
   const drafting = card(page, 'drafting')
@@ -57,9 +57,10 @@ test('4. a confirmation does not fire until approved; Edit forces a fresh approv
   await panel(page).getByRole('button', { name: 'Edit email' }).click()
   await panel(page).getByLabel('Subject').fill('Edited in the e2e test')
   await panel(page).getByRole('button', { name: 'Save changes' }).click()
-  await expect(panel(page).getByRole('button', { name: 'Waiting for the agent...', disabled: true })).toBeVisible()
+  await expect(panel(page).getByRole('status')).toHaveText('Edited version sentWaiting for the agent to respond.')
   await expect(panel(page).getByRole('button', { name: 'Approve and send' })).toHaveCount(0)
-  await expect(panel(page).getByText('Send the edited email?')).toBeVisible({ timeout: 15_000 })
+  await panel(page).getByRole('button', { name: 'Next decision: Drafting' }).click({ timeout: 15_000 })
+  await expect(panel(page).getByText('Send the edited email?')).toBeVisible()
   await expect(badge(page, 'drafting')).toHaveText('Needs approval')
 
   await panel(page).getByRole('button', { name: 'Approve and send' }).click()
@@ -89,7 +90,7 @@ test('6. a failed agent shows its error and a retry; the result is separate and 
   await expect(panel(page).getByText('Retry this agent?')).toBeVisible()
   await expect(panel(page).getByText('jira.search timed out after 30s')).toBeVisible()
   await panel(page).getByRole('button', { name: 'Retry', exact: true }).click()
-  await expect(panel(page).getByText('Retried - attempt 2 is running')).toBeVisible()
+  await expect(panel(page).getByText('Retry sent: attempt 2')).toBeVisible()
   await approveDrafting(page)
   await answerScheduling(page)
   await expect(badge(page, 'research')).toHaveText('Done')
@@ -108,7 +109,12 @@ test('a partial result is retried from its error item and becomes Complete', asy
   await answerScheduling(page)
   const result = page.getByRole('region', { name: 'Result' })
   await expect(result.getByRole('heading', { name: 'Partial result' })).toBeVisible()
+  const before = await card(page, 'research').boundingBox()
   await result.getByRole('button', { name: 'Retry agent' }).click()
+  await expect(result.getByText('Retrying...', { exact: true })).toBeVisible()
+  expect(await card(page, 'research').boundingBox()).toEqual(before)
+  await expect(result.getByRole('heading', { name: 'Updating' })).toBeVisible()
+  expect(await card(page, 'research').boundingBox()).toEqual(before)
   await expect(result.getByRole('heading', { name: 'Complete' })).toBeVisible()
 })
 

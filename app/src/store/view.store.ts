@@ -1,21 +1,19 @@
 import { create } from 'zustand'
 import { DEFAULT_TASK, type Draft } from '@mock/orchestrator.js'
 
-export interface Receipt {
+/** What the user sent, stored when the mock accepted it. The panel shows it until the user moves. */
+export interface Outcome {
   agentId: string
-  kind: 'approve' | 'resolve' | 'retry'
+  kind: 'approve' | 'edit' | 'resolve' | 'retry'
   /** The answer text sent with resolve. */
   answer?: string
   /** The attempt a retry started. */
   attempt?: number
-  /** Agents that were waiting when the user acted; auto-advance only goes to one of these. */
-  waitingAtAction: string[]
 }
 
-/** An open editor, or the version sent with edit(). */
+/** An open editor. */
 export interface EditEntry {
   draft: Draft
-  sent?: true
 }
 
 /** A question's picked option and typed words; `use` says which one is the answer. */
@@ -32,21 +30,23 @@ export interface ViewStore {
   selectedId: string | null
   /** The agent whose record is open in agent mode. */
   recordId: string | null
-  receipt: Receipt | null
+  outcome: Outcome | null
+  /** Bumped by the user's moves in the panel (select, open a record, back); the panel then moves focus to what it shows. */
+  focusRequest: number
   request: string
   speed: number
   jitter: boolean
   runs: number
   edits: Record<string, EditEntry>
   answers: Record<string, Answer>
-  /** Picks a decision, switches to decisions mode and clears the receipt. */
+  /** Picks a decision, switches to decisions mode and clears the outcome. */
   select: (id: string) => void
   /** Opens an agent's record in the panel. */
   openRecord: (id: string) => void
   backToDecisions: () => void
-  /** Keeps what the panel shows, without touching the receipt. */
+  /** Keeps what the panel shows, without touching the outcome. */
   pin: (id: string) => void
-  setReceipt: (receipt: Receipt | null) => void
+  setOutcome: (outcome: Outcome | null) => void
   setRequest: (request: string) => void
   setSpeed: (speed: number) => void
   setJitter: (jitter: boolean) => void
@@ -57,7 +57,7 @@ export interface ViewStore {
   runReset: () => void
 }
 
-const cleared = { mode: 'decisions' as const, selectedId: null, recordId: null, receipt: null, edits: {}, answers: {} }
+const cleared = { mode: 'decisions' as const, selectedId: null, recordId: null, outcome: null, focusRequest: 0, edits: {}, answers: {} }
 
 export const useViewStore = create<ViewStore>()((set) => ({
   ...cleared,
@@ -65,11 +65,11 @@ export const useViewStore = create<ViewStore>()((set) => ({
   speed: 1,
   jitter: false,
   runs: 0,
-  select: (id) => set({ mode: 'decisions', selectedId: id, receipt: null }),
-  openRecord: (id) => set({ mode: 'agent', recordId: id }),
-  backToDecisions: () => set({ mode: 'decisions' }),
+  select: (id) => set((state) => ({ mode: 'decisions', selectedId: id, outcome: null, focusRequest: state.focusRequest + 1 })),
+  openRecord: (id) => set((state) => ({ mode: 'agent', recordId: id, focusRequest: state.focusRequest + 1 })),
+  backToDecisions: () => set((state) => ({ mode: 'decisions', focusRequest: state.focusRequest + 1 })),
   pin: (id) => set({ selectedId: id }),
-  setReceipt: (receipt) => set({ receipt }),
+  setOutcome: (outcome) => set({ outcome }),
   setRequest: (request) => set({ request }),
   setSpeed: (speed) => set({ speed }),
   setJitter: (jitter) => set({ jitter }),
@@ -82,6 +82,6 @@ export const useViewStore = create<ViewStore>()((set) => ({
     }),
   setAnswer: (agentId, answer) => set((state) => ({ answers: { ...state.answers, [agentId]: answer } })),
   runStarted: () => set((state) => ({ ...cleared, runs: state.runs + 1 })),
-  runCancelled: () => set({ receipt: null }),
+  runCancelled: () => set({ outcome: null }),
   runReset: () => set({ ...cleared, runs: 0 }),
 }))

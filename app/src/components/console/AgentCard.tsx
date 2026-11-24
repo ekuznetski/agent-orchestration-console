@@ -2,14 +2,15 @@ import { useState } from 'react'
 import { TAGS, toneBg, toneColor } from '@/config/agentTags'
 import { useConsoleStore } from '@/store/console.store'
 import { useAgent, useIsShown } from '@/store/hooks'
-import { needsUser, statusLineOf } from '@/store/selectors'
+import { statusLineOf, waitingQueue } from '@/store/selectors'
 import { useViewStore } from '@/store/view.store'
 import { AgentTrace } from './AgentTrace'
 
 /** One agent: label, state badge, one status line, its trace on demand. Clicking the card opens its decision. */
 export function AgentCard({ id }: { id: string }) {
   const agent = useAgent(id)
-  const inQueue = useConsoleStore((state) => state.status !== 'cancelled' && needsUser(state.agents[id]))
+  // Waiting for the user and nothing sent yet; while a command is pending the card opens the record.
+  const inQueue = useConsoleStore((state) => waitingQueue(state).includes(id))
   const shown = useIsShown(id)
   const select = useViewStore((state) => state.select)
   const openRecord = useViewStore((state) => state.openRecord)

@@ -1,6 +1,6 @@
 import { resultKindLabel } from '@/config/agentTags'
 import { useConsoleStore } from '@/store/console.store'
-import { useDecisionQueue } from '@/store/hooks'
+import { useWaitingQueue } from '@/store/hooks'
 import { isDegraded } from '@/store/selectors'
 import { RetryButton } from './RetryButton'
 
@@ -10,10 +10,14 @@ export function ResultBlock() {
   const result = useConsoleStore((state) => state.result)
   const agents = useConsoleStore((state) => state.agents)
   const cancelled = useConsoleStore((state) => state.status === 'cancelled')
-  const queue = useDecisionQueue()
+  const queue = useWaitingQueue()
   if (!result) return null
   const retryable = (agentId: string) => queue.includes(agentId) && agents[agentId].tag === 'failed'
-  const canRetry = result.event.items.some((item) => item.kind === 'error' && retryable(item.agentId))
+  // Retried and not failed again: the row keeps its place with "Retrying..." until a newer result replaces it.
+  const retrying = (agentId: string) => agents[agentId].actions.at(-1)?.kind === 'retry' && !retryable(agentId)
+  const errors = result.event.items.filter((item) => item.kind === 'error')
+  const canRetry = errors.some((item) => retryable(item.agentId))
+  const anyRetrying = errors.some((item) => retrying(item.agentId))
 
   const degraded = isDegraded(result.event)
   const head = result.outdated ? 'Updating' : degraded ? 'Partial result' : 'Complete'
@@ -25,7 +29,11 @@ export function ResultBlock() {
         {head}
       </h2>
       {cancelled && <p className="text-muted-foreground">From before the run was cancelled.</p>}
-      {!result.outdated && canRetry && <p className="text-muted-foreground">An agent failed. Retry it to update this result.</p>}
+      {(canRetry || anyRetrying) && (
+        <p className="text-muted-foreground">
+          {canRetry ? 'An agent failed. Retry it to update this result.' : 'Retrying... This result updates when the agent finishes.'}
+        </p>
+      )}
       <div className={result.outdated ? 'flex flex-col gap-2 opacity-50' : 'flex flex-col gap-2'}>
         <p>{result.event.summary}</p>
         {result.event.items.map((item) => (
@@ -46,6 +54,9 @@ export function ResultBlock() {
                 <div className="pt-1">
                   <RetryButton agentId={item.agentId} label="Retry agent" />
                 </div>
+              )}
+              {item.kind === 'error' && retrying(item.agentId) && (
+                <div className="text-muted-foreground flex h-9 items-center pt-1">Retrying...</div>
               )}
             </div>
           </div>

@@ -1,8 +1,7 @@
 import { useShallow } from 'zustand/react/shallow'
-import type { RunState } from './console.reducer'
 import { useConsoleStore } from './console.store'
-import { decisionQueue, phaseOf, runHeader } from './selectors'
-import { useViewStore, type Receipt } from './view.store'
+import { decisionQueue, runHeader, waitingQueue } from './selectors'
+import { useViewStore, type Outcome } from './view.store'
 
 /** One agent by reference: an event for another agent does not re-render the reader. */
 export const useAgent = (id: string) => useConsoleStore((state) => state.agents[id])
@@ -11,46 +10,36 @@ export const useRunHeader = () => useConsoleStore(useShallow(runHeader))
 
 export const useDecisionQueue = () => useConsoleStore(useShallow(decisionQueue))
 
+export const useWaitingQueue = () => useConsoleStore(useShallow(waitingQueue))
+
 function pickShown(queue: string[], selectedId: string | null): string | null {
   return selectedId !== null && queue.includes(selectedId) ? selectedId : (queue[0] ?? null)
 }
 
-/** After the run has ended with an empty queue the panel shows "Nothing needs you right now". */
-function runEndedEmpty(state: RunState): boolean {
-  const phase = phaseOf(state)
-  return (phase === 'completed' || phase === 'partial' || phase === 'cancelled') && decisionQueue(state).length === 0
-}
-
-function visibleReceipt(state: RunState, receipt: Receipt | null): Receipt | null {
-  return runEndedEmpty(state) ? null : receipt
-}
-
-/** The selected agent while it is still in the queue, otherwise the first in the queue. */
+/** The selected agent while the user can act on it, otherwise the first decision waiting. */
 export function useShownDecision(): string | null {
-  const queue = useDecisionQueue()
+  const queue = useWaitingQueue()
   const selectedId = useViewStore((state) => state.selectedId)
   return pickShown(queue, selectedId)
 }
 
-/** Receipts show only in decisions mode. */
-export function useVisibleReceipt(): Receipt | null {
-  const receipt = useViewStore((state) => (state.mode === 'decisions' ? state.receipt : null))
-  return useConsoleStore((state) => visibleReceipt(state, receipt))
+/** The outcome shows only in decisions mode; it stays until the user moves. */
+export function useVisibleOutcome(): Outcome | null {
+  return useViewStore((state) => (state.mode === 'decisions' ? state.outcome : null))
 }
 
-/** Whether the panel is about this agent: the open record's agent in agent mode, otherwise the receipt's
+/** Whether the panel is about this agent: the open record's agent in agent mode, otherwise the outcome's
  * agent first, then the shown decision. */
 export function useIsShown(id: string): boolean {
   const recordId = useViewStore((state) => (state.mode === 'agent' ? state.recordId : null))
-  const receipt = useVisibleReceipt()
+  const outcome = useVisibleOutcome()
   const shown = useShownDecision()
-  return (recordId ?? receipt?.agentId ?? shown) === id
+  return (recordId ?? outcome?.agentId ?? shown) === id
 }
 
 /** The same answer as useIsShown, read at call time (for click handlers). */
 export function shownDecisionNow(): string | null {
-  const state = useConsoleStore.getState()
   const view = useViewStore.getState()
   if (view.mode === 'agent') return view.recordId
-  return visibleReceipt(state, view.receipt)?.agentId ?? pickShown(decisionQueue(state), view.selectedId)
+  return view.outcome?.agentId ?? pickShown(waitingQueue(useConsoleStore.getState()), view.selectedId)
 }

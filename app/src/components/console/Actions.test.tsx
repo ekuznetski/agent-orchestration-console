@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, fireEvent, render, screen, within } from '@testing-library/react'
 import { emit as emitRaw, fakeOrchestrator } from '@/test/fakeOrchestrator'
 import { reset, start } from '@/subscriptionManager/subscription'
+import { AgentList } from './AgentCard'
 import { DecisionPanel } from './DecisionPanel'
 import { ResultBlock } from './ResultBlock'
 
@@ -10,6 +11,8 @@ vi.mock('@mock/orchestrator.js', async () => (await import('@/test/fakeOrchestra
 const emit = (event: object) => act(() => emitRaw(event))
 const panel = () => within(screen.getByRole('complementary', { name: 'Decisions waiting for you' }))
 const click = (name: string | RegExp) => fireEvent.click(panel().getByRole('button', { name }))
+const openCard = (id: string) => fireEvent.click(screen.getByTestId(`agent-card-${id}`))
+const outcome = () => panel().getByRole('status')
 
 let seq = 0
 const next = () => ++seq
@@ -71,6 +74,7 @@ beforeEach(() => {
   render(
     <>
       <ResultBlock />
+      <AgentList />
       <DecisionPanel />
     </>,
   )
@@ -82,42 +86,48 @@ afterEach(() => {
 })
 
 describe('approve', () => {
-  it('shows a receipt after approve and keeps it when the agent answers; a double click calls approve once', () => {
+  it('shows the outcome after approve; a double click calls approve once', () => {
     setup()
-    click('Next')
+    openCard('drafting')
     expect(panel().getByText('Send this email?')).toBeTruthy()
     expect(panel().getByText('maya@example.test')).toBeTruthy()
     const button = panel().getByRole('button', { name: 'Approve and send' })
     fireEvent.click(button)
     fireEvent.click(button)
     expect(fakeOrchestrator.approve).toHaveBeenCalledTimes(1)
-    expect(panel().getByText('Approved')).toBeTruthy()
-    step('drafting')
-    expect(panel().getByText('Approved')).toBeTruthy()
-    expect(panel().getByText(/Up next:/)).toBeTruthy()
+    expect(within(outcome()).getByText('Approved')).toBeTruthy()
   })
 
-  it('shows the receipt again when the user goes back to a decision whose approve is still pending', () => {
+  it('keeps the outcome while the agent answers and the run ends; the second line follows the agent', () => {
     setup()
-    click('Next')
+    openCard('drafting')
     click('Approve and send')
-    click('Next: Research')
-    expect(panel().getByText('Retry this agent?')).toBeTruthy()
-    click('Next')
-    expect(panel().getByText('Approved')).toBeTruthy()
+    expect(outcome().textContent).toBe('ApprovedWaiting for the agent to respond.')
+    step('drafting')
+    expect(outcome().textContent).toBe('ApprovedNow: Running - drafting step')
+    status('drafting', 'done')
+    expect(outcome().textContent).toBe('ApprovedNow: Done - drafting done')
+  })
+
+  it('a card click on an agent whose command is pending opens its record, not its decision', () => {
+    setup()
+    openCard('drafting')
+    click('Approve and send')
+    openCard('drafting')
+    expect(panel().getByText('Agent record')).toBeTruthy()
     expect(panel().queryByRole('button', { name: 'Approve and send' })).toBeNull()
   })
 })
 
 describe('edit', () => {
-  it('keeps typed text across switching, waits for the agent, then asks again with Approve in the same place', () => {
+  it('keeps typed text across switching, sends the edit, then offers the re-asked confirmation first', () => {
     setup()
-    click('Next')
+    openCard('drafting')
     click('Edit email')
     expect(panel().getByText('Nothing is sent yet. You approve the edited email next.')).toBeTruthy()
     fireEvent.change(panel().getByLabelText('Subject'), { target: { value: 'New subject' } })
-    click('Next')
-    click('Prev')
+    openCard('scheduling')
+    openCard('drafting')
     expect((panel().getByLabelText('Subject') as HTMLInputElement).value).toBe('New subject')
 
     fireEvent.change(panel().getByLabelText('Message'), { target: { value: '   ' } })
@@ -125,15 +135,14 @@ describe('edit', () => {
     fireEvent.change(panel().getByLabelText('Message'), { target: { value: 'New body' } })
     click('Save changes')
     expect(fakeOrchestrator.edit).toHaveBeenCalledWith('drafting', { subject: 'New subject', body: 'New body' })
-    expect(panel().getByText('Edited version sent to the agent')).toBeTruthy()
-    expect((panel().getByRole('button', { name: 'Waiting for the agent...' }) as HTMLButtonElement).disabled).toBe(true)
+    expect(outcome().textContent).toBe('Edited version sentWaiting for the agent to respond.')
+    expect(panel().getByRole('button', { name: 'Next decision: Research' })).toBeTruthy()
 
     step('drafting')
-    click('Next')
-    click('Prev')
-    expect(panel().getByText('Edited version sent to the agent')).toBeTruthy()
-
+    expect(outcome().textContent).toBe('Edited version sentWaiting for the agent to respond.')
     confirmation({ draft: { subject: 'New subject', body: 'New body' }, revision: 2 })
+    expect(within(outcome()).getByText('Edited version sent')).toBeTruthy()
+    click('Next decision: Drafting')
     expect(panel().getByText('Send the edited email?')).toBeTruthy()
     expect(panel().getByText('Edited version')).toBeTruthy()
     click('Approve and send')
@@ -144,7 +153,7 @@ describe('edit', () => {
     setup({ waiting: false })
     status('drafting', 'running')
     confirmation({ action: 'archive_ticket', effectClass: 'reversible', draft: { ticket: 'NW-1', body: 'Close it' } })
-    click('Next')
+    openCard('drafting')
     expect(panel().getByText('Approve this action?')).toBeTruthy()
     expect(panel().getByRole('button', { name: 'Approve' })).toBeTruthy()
     expect(panel().getByRole('button', { name: 'Edit' })).toBeTruthy()
@@ -156,12 +165,11 @@ describe('edit', () => {
 describe('answer a question', () => {
   it('keeps the picked option and the typed words across switching, and sends the option id', () => {
     setup()
-    click('Next')
-    click('Next')
+    openCard('scheduling')
     fireEvent.click(panel().getByText('Week B'))
     fireEvent.change(panel().getByLabelText('Or answer in your own words'), { target: { value: 'Any week' } })
-    click('Prev')
-    click('Next')
+    openCard('drafting')
+    openCard('scheduling')
     expect((panel().getByLabelText('Or answer in your own words') as HTMLInputElement).value).toBe('Any week')
     fireEvent.click(panel().getByText('Week B'))
     click('Send answer')
@@ -171,8 +179,7 @@ describe('answer a question', () => {
 
   it('sends the trimmed own words when typing made them the answer', () => {
     setup()
-    click('Next')
-    click('Next')
+    openCard('scheduling')
     fireEvent.click(panel().getByText('Week A'))
     fireEvent.change(panel().getByLabelText('Or answer in your own words'), { target: { value: '  Next Tuesday  ' } })
     click('Send answer')
@@ -182,13 +189,15 @@ describe('answer a question', () => {
 })
 
 describe('retry', () => {
-  it('retries from the panel and shows which attempt runs', () => {
+  it('retries from the panel and shows which attempt was sent', () => {
     setup()
     expect(panel().getByText('Retry this agent?')).toBeTruthy()
     expect(panel().getByText('The 1 steps of attempt 1 stay in its trace. Retry starts attempt 2.')).toBeTruthy()
     click('Retry')
     expect(fakeOrchestrator.retry).toHaveBeenCalledWith('research')
-    expect(panel().getByText('Retried - attempt 2 is running')).toBeTruthy()
+    expect(outcome().textContent).toBe('Retry sent: attempt 2Waiting for the agent to respond.')
+    status('research', 'running', { attempt: 2 })
+    expect(outcome().textContent).toBe('Retry sent: attempt 2Now: Running - research running')
   })
 
   it('retries from the error item of a partial result', () => {
@@ -205,14 +214,21 @@ describe('retry', () => {
     expect(screen.getByText('Partial result')).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: 'Retry agent' }))
     expect(fakeOrchestrator.retry).toHaveBeenCalledWith('research')
-    expect(panel().getByText('Retried - attempt 2 is running')).toBeTruthy()
+    expect(panel().getByText('Retry sent: attempt 2')).toBeTruthy()
+    const result = within(screen.getByRole('region', { name: 'Result' }))
+    expect(result.getByText('Retrying...')).toBeTruthy()
+    expect(result.getByText('Retrying... This result updates when the agent finishes.')).toBeTruthy()
+    status('research', 'running', { attempt: 2 })
+    expect(result.getByText('Updating')).toBeTruthy()
+    expect(result.getByText('Retrying...')).toBeTruthy()
+    expect(result.getByText('Retrying... This result updates when the agent finishes.')).toBeTruthy()
   })
 })
 
 describe('refused command', () => {
   it('shows a message when the agent does not accept the command and clears it on the next action', () => {
     setup()
-    click('Next')
+    openCard('drafting')
     fakeOrchestrator.approve.mockReturnValueOnce(false)
     click('Approve and send')
     expect(panel().getByText('The agent did not accept this action')).toBeTruthy()
@@ -221,25 +237,67 @@ describe('refused command', () => {
   })
 })
 
-describe('auto-advance', () => {
-  it('opens the next decision after 3 s when it was already waiting when the user acted', () => {
+describe('next decision', () => {
+  it('offers the longest-waiting decision and never switches by itself', () => {
     vi.useFakeTimers()
     setup()
     click('Retry')
-    expect(panel().getByText('opens in 3 s')).toBeTruthy()
-    act(() => vi.advanceTimersByTime(3000))
+    act(() => vi.advanceTimersByTime(10_000))
+    expect(panel().getByText('Retry sent: attempt 2')).toBeTruthy()
+    click('Next decision: Drafting')
     expect(panel().getByText('Send this email?')).toBeTruthy()
   })
 
-  it('stays on the receipt when the next decision opened after the user acted', () => {
-    vi.useFakeTimers()
+  it('shows no button while nothing waits; a decision that arrives adds the button and leaves the outcome', () => {
     setup({ waiting: false })
     click('Retry')
+    expect(panel().queryByRole('button', { name: /^Next decision/ })).toBeNull()
+    expect(panel().getByText('Nothing else needs you right now.')).toBeTruthy()
     status('drafting', 'running')
     confirmation()
-    expect(panel().queryByText('opens in 3 s')).toBeNull()
-    act(() => vi.advanceTimersByTime(3000))
-    expect(panel().getByText('Retried - attempt 2 is running')).toBeTruthy()
-    expect(panel().getByRole('button', { name: 'Next: Drafting' })).toBeTruthy()
+    expect(panel().getByText('Retry sent: attempt 2')).toBeTruthy()
+    expect(panel().getByRole('button', { name: 'Next decision: Drafting' })).toBeTruthy()
+  })
+
+  it('a decision that arrives does not replace the decision on screen', () => {
+    setup({ waiting: false })
+    expect(panel().getByText('Retry this agent?')).toBeTruthy()
+    status('drafting', 'running')
+    confirmation()
+    expect(panel().getByText('Retry this agent?')).toBeTruthy()
+  })
+})
+
+describe('focus', () => {
+  it('moves to the editor on Edit, to the Next decision button after Save, to the decision on a card click', () => {
+    setup()
+    openCard('drafting')
+    expect(document.activeElement).toBe(panel().getByRole('group', { name: 'Drafting - Draft it' }))
+    click('Edit email')
+    expect(document.activeElement).toBe(panel().getByLabelText('Subject'))
+    click('Save changes')
+    expect(document.activeElement).toBe(panel().getByRole('button', { name: 'Next decision: Research' }))
+  })
+
+  it('moves to the outcome after approve when nothing else waits', () => {
+    setup({ waiting: false })
+    status('drafting', 'running')
+    confirmation()
+    click('Retry')
+    click('Next decision: Drafting')
+    click('Approve and send')
+    expect(document.activeElement).toBe(outcome())
+  })
+
+  it('stays where the user put it when a decision opens in the empty panel', () => {
+    start('Task', 1, false)
+    seq = 1
+    emit({ type: 'plan', seq: 1, runId: 'r', task: 'Task', subtasks: [{ id: 'drafting', type: 'drafting', label: 'Draft it' }] })
+    status('drafting', 'running')
+    const outside = screen.getByRole('button', { name: 'Show steps (0)' })
+    outside.focus()
+    confirmation()
+    expect(panel().getByText('Send this email?')).toBeTruthy()
+    expect(document.activeElement).toBe(outside)
   })
 })

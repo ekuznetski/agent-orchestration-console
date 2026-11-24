@@ -143,15 +143,15 @@ describe('commands', () => {
 })
 
 describe('cancel and reset', () => {
-  it('cancel unsubscribes, resets the orchestrator, keeps the screen and edits, clears the receipt', () => {
+  it('cancel unsubscribes, resets the orchestrator, keeps the screen and edits, clears the outcome', () => {
     startWithGate()
     useViewStore.getState().setEdit('agent_drafting', { draft: { body: 'y' } })
-    useViewStore.getState().setReceipt({ agentId: 'agent_drafting', kind: 'approve', waitingAtAction: [] })
+    useViewStore.getState().setOutcome({ agentId: 'agent_drafting', kind: 'approve' })
     cancel()
     expect(fake.calls.slice(-2)).toEqual(['unsubscribe', 'reset'])
     expect(useConsoleStore.getState().status).toBe('cancelled')
     expect(useConsoleStore.getState().log).toHaveLength(2)
-    expect(useViewStore.getState()).toMatchObject({ receipt: null, runs: 1, edits: { agent_drafting: { draft: { body: 'y' } } } })
+    expect(useViewStore.getState()).toMatchObject({ outcome: null, runs: 1, edits: { agent_drafting: { draft: { body: 'y' } } } })
     expect(approve('agent_drafting')).toBe(false)
     expect(fake.orchestrator.approve).not.toHaveBeenCalled()
   })
@@ -159,7 +159,7 @@ describe('cancel and reset', () => {
   it('start clears screen state and counts the run; reset clears both stores and keeps request, speed, jitter', () => {
     const view = useViewStore.getState()
     view.select('agent_drafting')
-    view.setReceipt({ agentId: 'agent_drafting', kind: 'approve', waitingAtAction: [] })
+    view.setOutcome({ agentId: 'agent_drafting', kind: 'approve' })
     view.setEdit('agent_drafting', { draft: { body: 'x' } })
     view.setAnswer('agent_scheduling', { optionId: null, words: 'w', use: 'words' })
     view.setRequest('Kept request')
@@ -167,14 +167,14 @@ describe('cancel and reset', () => {
     view.setJitter(true)
 
     startWithGate()
-    expect(useViewStore.getState()).toMatchObject({ selectedId: null, receipt: null, edits: {}, answers: {}, runs: 1 })
+    expect(useViewStore.getState()).toMatchObject({ selectedId: null, outcome: null, edits: {}, answers: {}, runs: 1 })
 
     reset()
     expect(fake.calls.slice(-2)).toEqual(['unsubscribe', 'reset'])
     expect(useConsoleStore.getState()).toMatchObject({ status: 'idle', plan: null, log: [] })
     expect(useViewStore.getState()).toMatchObject({
       selectedId: null,
-      receipt: null,
+      outcome: null,
       edits: {},
       answers: {},
       runs: 0,

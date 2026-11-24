@@ -96,7 +96,7 @@ describe('cancel and run again', () => {
       mode: 'decisions',
       selectedId: null,
       recordId: null,
-      receipt: null,
+      outcome: null,
       edits: {},
       answers: {},
       request: 'Second request',
