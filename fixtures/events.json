@@ -1,0 +1,347 @@
+[
+  {
+    "type": "plan",
+    "seq": 1,
+    "ts": "2026-03-02T09:00:00.001Z",
+    "runId": "run_northwind_7f3a",
+    "task": "Research the Northwind renewal and draft a follow-up to Maya, then find time for a call next week.",
+    "subtasks": [
+      {
+        "id": "agent_research",
+        "type": "research",
+        "label": "Research the Northwind renewal"
+      },
+      {
+        "id": "agent_drafting",
+        "type": "drafting",
+        "label": "Draft a follow-up to Maya Chen"
+      },
+      {
+        "id": "agent_scheduling",
+        "type": "scheduling",
+        "label": "Find time for a call next week"
+      }
+    ]
+  },
+  {
+    "type": "agent_status",
+    "seq": 2,
+    "ts": "2026-03-02T09:00:00.002Z",
+    "agentId": "agent_research",
+    "state": "queued",
+    "statusLine": "Queued — research",
+    "attempt": 1
+  },
+  {
+    "type": "agent_status",
+    "seq": 3,
+    "ts": "2026-03-02T09:00:00.362Z",
+    "agentId": "agent_drafting",
+    "state": "queued",
+    "statusLine": "Queued — drafting"
+  },
+  {
+    "type": "agent_status",
+    "seq": 4,
+    "ts": "2026-03-02T09:00:00.640Z",
+    "agentId": "agent_research",
+    "state": "running",
+    "statusLine": "Searching Slack and Jira…",
+    "attempt": 1
+  },
+  {
+    "type": "agent_status",
+    "seq": 5,
+    "ts": "2026-03-02T09:00:00.726Z",
+    "agentId": "agent_scheduling",
+    "state": "queued",
+    "statusLine": "Queued — scheduling"
+  },
+  {
+    "type": "agent_step",
+    "seq": 6,
+    "ts": "2026-03-02T09:00:00.960Z",
+    "agentId": "agent_research",
+    "act": "searched",
+    "detail": "Slack #northwind-renewal — 42 messages since 12 Feb"
+  },
+  {
+    "type": "agent_status",
+    "seq": 7,
+    "ts": "2026-03-02T09:00:01.322Z",
+    "agentId": "agent_drafting",
+    "state": "running",
+    "statusLine": "Drafting the follow-up to Maya Chen…"
+  },
+  {
+    "type": "agent_step",
+    "seq": 9,
+    "ts": "2026-03-02T09:00:01.744Z",
+    "agentId": "agent_research",
+    "act": "read",
+    "detail": "Slack thread (18 Feb) — Maya flags the 12% uplift"
+  },
+  {
+    "type": "agent_status",
+    "seq": 10,
+    "ts": "2026-03-02T09:00:01.745Z",
+    "agentId": "agent_scheduling",
+    "state": "running",
+    "statusLine": "Checking calendars for next week…"
+  },
+  {
+    "type": "agent_step",
+    "seq": 8,
+    "ts": "2026-03-02T09:00:01.600Z",
+    "agentId": "agent_research",
+    "act": "searched",
+    "detail": "Jira NW-2291 'Renewal blockers' — 3 open issues"
+  },
+  {
+    "type": "agent_step",
+    "seq": 11,
+    "ts": "2026-03-02T09:00:01.962Z",
+    "agentId": "agent_drafting",
+    "act": "read",
+    "detail": "Last 3 email threads with maya.chen@northwind.example"
+  },
+  {
+    "type": "agent_step",
+    "seq": 12,
+    "ts": "2026-03-02T09:00:02.240Z",
+    "agentId": "agent_research",
+    "act": "read",
+    "detail": "Jira NW-2291 — blocked on security review sign-off"
+  },
+  {
+    "type": "agent_step",
+    "seq": 13,
+    "ts": "2026-03-02T09:00:02.326Z",
+    "agentId": "agent_scheduling",
+    "act": "searched",
+    "detail": "Your calendar — 6 free 30-min slots, 9–13 Mar"
+  },
+  {
+    "type": "agent_step",
+    "seq": 14,
+    "ts": "2026-03-02T09:00:02.602Z",
+    "agentId": "agent_drafting",
+    "act": "decided",
+    "detail": "Tone: concise; lead with the security sign-off blocker"
+  },
+  {
+    "type": "agent_status",
+    "seq": 15,
+    "ts": "2026-03-02T09:00:02.880Z",
+    "agentId": "agent_research",
+    "state": "failed",
+    "statusLine": "Failed — Jira fetch timed out after 3 attempts",
+    "attempt": 1,
+    "error": {
+      "code": "upstream_timeout",
+      "message": "jira.search timed out after 30s",
+      "retryable": true
+    }
+  },
+  {
+    "type": "agent_status",
+    "seq": 16,
+    "ts": "2026-03-02T09:00:03.360Z",
+    "agentId": "agent_research",
+    "state": "queued",
+    "statusLine": "Retrying — attempt 2",
+    "attempt": 2
+  },
+  {
+    "type": "agent_step",
+    "seq": 17,
+    "ts": "2026-03-02T09:00:03.361Z",
+    "agentId": "agent_scheduling",
+    "act": "read",
+    "detail": "Maya's free/busy is not visible (external org)"
+  },
+  {
+    "type": "agent_status",
+    "seq": 18,
+    "ts": "2026-03-02T09:00:03.362Z",
+    "agentId": "agent_drafting",
+    "state": "running",
+    "statusLine": "Paused — waiting for your approval"
+  },
+  {
+    "type": "agent_status",
+    "seq": 19,
+    "ts": "2026-03-02T09:00:04.000Z",
+    "agentId": "agent_research",
+    "state": "running",
+    "statusLine": "Re-fetching Jira with backoff…",
+    "attempt": 2
+  },
+  {
+    "type": "confirmation_required",
+    "seq": 20,
+    "ts": "2026-03-02T09:00:04.001Z",
+    "agentId": "agent_drafting",
+    "action": "send_email",
+    "target": "maya.chen@northwind.example",
+    "effectClass": "irreversible",
+    "draft": {
+      "subject": "Northwind renewal — security sign-off and next steps",
+      "body": "Hi Maya,\n\nFollowing up on the renewal. From our side the only open blocker is the\nsecurity review sign-off on NW-2291 — everything else is ready to go before\nthe 31 Mar term end.\n\nI know the 12% uplift is the sticking point. Happy to walk through how we\nlanded on it and what we can flex.\n\nWould a 30-minute call next week work? I can send a couple of times.\n\nBest,\nAlex"
+    },
+    "revision": 1
+  },
+  {
+    "type": "agent_step",
+    "seq": 21,
+    "ts": "2026-03-02T09:00:04.203Z",
+    "agentId": "agent_drafting",
+    "act": "decided",
+    "detail": "Approved by you — sending as drafted"
+  },
+  {
+    "type": "agent_status",
+    "seq": 22,
+    "ts": "2026-03-02T09:00:04.204Z",
+    "agentId": "agent_scheduling",
+    "state": "running",
+    "statusLine": "Paused — needs your decision"
+  },
+  {
+    "type": "agent_step",
+    "seq": 23,
+    "ts": "2026-03-02T09:00:04.320Z",
+    "agentId": "agent_research",
+    "act": "searched",
+    "detail": "Jira NW-2291 (retry) — 3 issues fetched"
+  },
+  {
+    "type": "agent_status",
+    "seq": 24,
+    "ts": "2026-03-02T09:00:04.523Z",
+    "agentId": "agent_drafting",
+    "state": "running",
+    "statusLine": "Sending…"
+  },
+  {
+    "type": "escalation_required",
+    "seq": 25,
+    "ts": "2026-03-02T09:00:04.524Z",
+    "agentId": "agent_scheduling",
+    "question": "Which week should I target for the Northwind call?",
+    "context": "Maya's calendar is external, so I can't see her availability. The renewal term ends 31 Mar and the security review is due to close 13 Mar.",
+    "options": [
+      {
+        "id": "week_of_9_mar",
+        "label": "Week of 9 Mar",
+        "detail": "Before the 31 Mar renewal date — leaves room for one more round."
+      },
+      {
+        "id": "week_of_16_mar",
+        "label": "Week of 16 Mar",
+        "detail": "After the security review is due to close."
+      },
+      {
+        "id": "ask_maya",
+        "label": "Ask Maya to pick",
+        "detail": "Send a scheduling link instead of holding a slot."
+      }
+    ]
+  },
+  {
+    "type": "agent_step",
+    "seq": 26,
+    "ts": "2026-03-02T09:00:04.770Z",
+    "agentId": "agent_scheduling",
+    "act": "decided",
+    "detail": "You chose: Week of 9 Mar"
+  },
+  {
+    "type": "agent_step",
+    "seq": 27,
+    "ts": "2026-03-02T09:00:04.960Z",
+    "agentId": "agent_research",
+    "act": "read",
+    "detail": "Renewal doc v4 — term ends 31 Mar 2026, 12% uplift proposed"
+  },
+  {
+    "type": "agent_status",
+    "seq": 28,
+    "ts": "2026-03-02T09:00:05.163Z",
+    "agentId": "agent_drafting",
+    "state": "done",
+    "statusLine": "Sent to maya.chen@northwind.example"
+  },
+  {
+    "type": "agent_status",
+    "seq": 30,
+    "ts": "2026-03-02T09:00:05.554Z",
+    "agentId": "agent_scheduling",
+    "state": "done",
+    "statusLine": "Hold placed — Tue 10 Mar, 14:00"
+  },
+  {
+    "type": "agent_step",
+    "seq": 29,
+    "ts": "2026-03-02T09:00:05.410Z",
+    "agentId": "agent_scheduling",
+    "act": "decided",
+    "detail": "Placed a 30-min hold — Tue 10 Mar, 14:00–14:30 (reversible, auto-applied and logged)"
+  },
+  {
+    "type": "agent_step",
+    "seq": 31,
+    "ts": "2026-03-02T09:00:05.600Z",
+    "agentId": "agent_research",
+    "act": "decided",
+    "detail": "Summary: renewal at risk on security sign-off; Maya owns the pricing objection"
+  },
+  {
+    "type": "agent_status",
+    "seq": 32,
+    "ts": "2026-03-02T09:00:05.920Z",
+    "agentId": "agent_research",
+    "state": "done",
+    "statusLine": "Done — 4 sources, 1 summary",
+    "attempt": 2
+  },
+  {
+    "type": "result",
+    "seq": 33,
+    "ts": "2026-03-02T09:00:06.240Z",
+    "runId": "run_northwind_7f3a",
+    "degraded": false,
+    "summary": "Northwind renewal is blocked on security sign-off. A follow-up went to Maya Chen and a 30-minute call slot is held for next week.",
+    "items": [
+      {
+        "id": "item_research",
+        "agentId": "agent_research",
+        "kind": "summary",
+        "title": "Northwind renewal — status",
+        "detail": "Term ends 31 Mar 2026 with a 12% uplift proposed. The renewal is blocked on security review sign-off (NW-2291). Maya owns the pricing objection raised on 18 Feb.",
+        "sources": [
+          "Slack #northwind-renewal",
+          "Jira NW-2291",
+          "Slack thread — 18 Feb",
+          "Renewal doc v4"
+        ]
+      },
+      {
+        "id": "item_email",
+        "agentId": "agent_drafting",
+        "kind": "email_sent",
+        "title": "Follow-up sent to Maya Chen",
+        "detail": "Subject: Northwind renewal — security sign-off and next steps — sent to maya.chen@northwind.example after your approval.",
+        "sources": []
+      },
+      {
+        "id": "item_hold",
+        "agentId": "agent_scheduling",
+        "kind": "calendar_hold",
+        "title": "Hold placed — Tue 10 Mar, 14:00",
+        "detail": "Placed a 30-min hold — Tue 10 Mar, 14:00–14:30 (reversible, auto-applied and logged)",
+        "sources": []
+      }
+    ]
+  }
+]

@@ -1,0 +1,122 @@
+<!doctype html>
+<meta charset="utf-8" />
+<title>WIRE CHECK — mock orchestrator (NOT a design reference)</title>
+
+<!--
+  ============================================================================
+  THIS IS NOT A DESIGN REFERENCE. IT IS A WIRE CHECK.
+  ============================================================================
+  Deliberately ugly, unstyled, and dumb: it subscribes to the mock and dumps
+  raw events onto the page so you can see exactly what arrives, in what order.
+
+  Do NOT copy this layout, this markup, or this "render everything again"
+  approach. The console you build is yours to design and architect — that is
+  the part we are actually evaluating.
+
+  Use this file to:
+    - confirm the mock runs in your browser,
+    - watch the interleaving / out-of-order events with your own eyes,
+    - poke approve / edit / resolve / retry and see what they do.
+  ============================================================================
+-->
+
+<style>
+  /* The only styling here exists to stop long JSON blowing out the page. */
+  pre { white-space: pre-wrap; word-break: break-word; margin: 0 0 4px; }
+  body { font-family: monospace; }
+</style>
+
+<h1>Mock orchestrator — wire check</h1>
+<p>
+  <b>This page is not a design reference.</b> It is the plainest possible proof
+  that the mock works. Your UI is yours to design.
+</p>
+
+<div id="file-warning" hidden>
+  <p>
+    <b>Loaded over <code>file://</code>.</b> Browsers block ES module imports
+    from the filesystem. Serve the folder instead, then reload:
+  </p>
+  <pre>npx serve .        # or:  python3 -m http.server 8000</pre>
+</div>
+
+<div id="app" hidden>
+  <p>
+    <button id="start">start()</button>
+    <button id="reset">reset()</button>
+    speed
+    <select id="speed">
+      <option value="0.25">0.25x (slow — good for debugging)</option>
+      <option value="0.5">0.5x</option>
+      <option value="1" selected>1x</option>
+      <option value="2">2x</option>
+      <option value="4">4x</option>
+    </select>
+    (speed applies on the next reset)
+  </p>
+
+  <p>
+    Handlers:
+    <button id="approve">approve(drafting)</button>
+    <button id="edit">edit(drafting, …)</button>
+    <button id="resolve-1">resolve(scheduling, 'week_of_9_mar')</button>
+    <button id="resolve-2">resolve(scheduling, 'week_of_16_mar')</button>
+    <button id="retry">retry(research)</button>
+  </p>
+
+  <p>
+    Calling a handler when the agent is not parked is a no-op — it returns
+    <code>false</code> and logs a warning. That is intentional.
+  </p>
+
+  <hr />
+  <p>events: <span id="count">0</span> &nbsp; (arrival order — note the seq jumps)</p>
+  <div id="out"></div>
+</div>
+
+<script type="module">
+  if (location.protocol === 'file:') {
+    document.getElementById('file-warning').hidden = false;
+  } else {
+    document.getElementById('app').hidden = false;
+
+    const { createMockOrchestrator, AGENT_IDS } = await import('./mock/orchestrator.js');
+
+    const out = document.getElementById('out');
+    const count = document.getElementById('count');
+    let orc = null;
+    let n = 0;
+
+    function build() {
+      if (orc) orc.reset();
+      out.textContent = '';
+      n = 0;
+      count.textContent = '0';
+      orc = createMockOrchestrator({ speed: Number(document.getElementById('speed').value) });
+      orc.subscribe((evt) => {
+        n++;
+        count.textContent = String(n);
+        // Deliberately dumb: append the raw event. No state model, no diffing.
+        const line = document.createElement('pre');
+        line.textContent =
+          `#${String(n).padStart(2, '0')}  seq=${String(evt.seq).padStart(2, '0')}  ` +
+          `${evt.type}  ${JSON.stringify(evt)}`;
+        out.appendChild(line);
+      });
+    }
+
+    build();
+
+    document.getElementById('start').onclick = () => orc.start();
+    document.getElementById('reset').onclick = build;
+    document.getElementById('speed').onchange = build;
+    document.getElementById('approve').onclick = () => orc.approve(AGENT_IDS.drafting);
+    document.getElementById('edit').onclick = () =>
+      orc.edit(AGENT_IDS.drafting, { body: 'Hi Maya — shorter version, edited in the wire check.' });
+    document.getElementById('resolve-1').onclick = () =>
+      orc.resolve(AGENT_IDS.scheduling, 'week_of_9_mar');
+    document.getElementById('resolve-2').onclick = () =>
+      orc.resolve(AGENT_IDS.scheduling, 'week_of_16_mar');
+    document.getElementById('retry').onclick = () => orc.retry(AGENT_IDS.research);
+  }
+</script>
