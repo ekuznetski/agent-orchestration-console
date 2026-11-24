@@ -24,6 +24,13 @@ export function pendingCommand(agent: AgentModel): Action | null {
   return agent.maxSeq > last.afterSeq ? null : last
 }
 
+/** A command the mock accepted and the agent has not answered yet: the badge says "Sent" instead of the need it
+ * no longer has, as the header count already leaves the agent out. For an edit that lasts until the re-asked
+ * confirmation; the model's tag and queue place stay as they are. */
+export function isSent(agent: AgentModel): boolean {
+  return pendingCommand(agent) !== null
+}
+
 /** The single rule for "waits for the user". */
 export function needsUser(agent: AgentModel): boolean {
   if (agent.tag === 'needs_approval' || agent.tag === 'needs_answer') return true

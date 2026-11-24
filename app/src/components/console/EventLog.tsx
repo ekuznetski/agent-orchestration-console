@@ -2,6 +2,7 @@ import type { OrchestratorEvent } from '@mock/orchestrator.js'
 import { useEffect, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { useConsoleStore } from '@/store/console.store'
+import { ClampedText } from './ClampedText'
 
 function summaryOf(event: OrchestratorEvent): string {
   switch (event.type) {
@@ -92,9 +93,15 @@ export function EventLog() {
                   </td>
                   {/* The time of day in UTC, to the millisecond (ts is ISO-8601). */}
                   <td>{new Date(event.ts).toISOString().slice(11, 23)}</td>
-                  <td>{event.type}</td>
-                  <td>{'agentId' in event ? event.agentId : ''}</td>
-                  <td className={`[overflow-wrap:anywhere] ${failed ? '' : 'text-muted-foreground'}`}>{summaryOf(event)}</td>
+                  <td>
+                    <ClampedText text={event.type} lines={1} />
+                  </td>
+                  <td>
+                    <ClampedText text={'agentId' in event ? event.agentId : ''} lines={1} />
+                  </td>
+                  <td>
+                    <ClampedText text={summaryOf(event)} lines={2} className={failed ? '' : 'text-muted-foreground'} />
+                  </td>
                 </tr>
               )
             })}

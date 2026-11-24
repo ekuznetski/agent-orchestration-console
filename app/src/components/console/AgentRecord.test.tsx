@@ -8,7 +8,7 @@ import { DecisionPanel } from './DecisionPanel'
 vi.mock('@mock/orchestrator.js', async () => (await import('@/test/fakeOrchestrator')).fakeModule)
 
 const emit = (event: object) => act(() => emitRaw(event))
-const panel = () => within(screen.getByRole('complementary', { name: /^(Decisions waiting for you|Agent record)$/ }))
+const panel = () => within(screen.getByRole('complementary', { name: /^(Decisions|Agent record)$/ }))
 const click = (name: string | RegExp) => fireEvent.click(panel().getByRole('button', { name }))
 const openCard = (id: string) => fireEvent.click(screen.getByTestId(`agent-card-${id}`))
 
@@ -161,7 +161,7 @@ describe('selected card', () => {
 describe('panel landmark', () => {
   it('is named after what it shows', () => {
     setup({ waiting: false })
-    expect(screen.getByRole('complementary', { name: 'Decisions waiting for you' })).toBeTruthy()
+    expect(screen.getByRole('complementary', { name: 'Decisions' })).toBeTruthy()
     openCard('drafting')
     expect(screen.getByRole('complementary', { name: 'Agent record' })).toBeTruthy()
   })

@@ -3,6 +3,7 @@ import { CircleCheck, CircleX, LoaderCircle } from 'lucide-react'
 import { actLabel } from '@/config/agentTags'
 import type { AgentModel } from '@/store/console.reducer'
 import { traceOf } from '@/store/selectors'
+import { ClampedText } from './ClampedText'
 
 type Row = { key: string; kind: 'step' | 'failure' | 'working'; number?: number; label?: string; text: string; error?: string }
 
@@ -26,9 +27,9 @@ function TraceRow({ row, up, down }: { row: Row; up: Row | null; down: Row | nul
       <span className={row.kind === 'working' ? 'text-muted-foreground' : undefined}>
         {/* At most two lines, so a long detail (a free-text answer) cannot stretch the card; the full text
             stays in the tooltip and in the record. */}
-        <span className="line-clamp-2" title={row.label ? `${row.label}: ${row.text}` : row.text}>
+        <ClampedText text={row.label ? `${row.label}: ${row.text}` : row.text} lines={2}>
           {row.label && <b className="font-semibold">{row.label}:</b>} {row.text}
-        </span>
+        </ClampedText>
         {row.error && <span className="block font-mono text-xs">{row.error}</span>}
       </span>
     </li>

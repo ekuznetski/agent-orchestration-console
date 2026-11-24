@@ -12,6 +12,7 @@ import { cancel, start } from '@/subscriptionManager/subscription'
 import { EventLog } from './EventLog'
 import { Spinner } from '@/components/ui/spinner'
 import { StatusBadge } from './StatusBadge'
+import { ClampedText } from './ClampedText'
 
 const SPEEDS = [0.25, 0.5, 1, 4]
 
@@ -142,7 +143,7 @@ const clock = (ms: number) => {
 
 /** Run time from the plan: it runs only while the run works (a Retry after a partial result reopens it), so the
  * time the user spends between a settled run and a Retry is not counted. "took" once ended, "at" for a cancel. */
-function Elapsed({ phase }: { phase: Phase }) {
+function Elapsed({ phase, count }: { phase: Phase; count?: string }) {
   const clockState = useViewStore((state) => state.clock)
   const active = isActive(phase)
   const [now, setNow] = useState(() => Date.now())
@@ -154,7 +155,14 @@ function Elapsed({ phase }: { phase: Phase }) {
   const ms = clockState.total + (clockState.since === null ? 0 : Math.max(0, now - clockState.since))
   const time = <b>{clock(ms)}</b>
   if (active) return <span className="mr-2">{time} into the run</span>
-  if (phase === 'cancelled') return <span className="ml-2">at {time}</span>
+  // A cancel reads "at M:SS - N of M done" as one phrase: the moment of the cancel, then the count.
+  if (phase === 'cancelled')
+    return (
+      <span>
+        {/* The hyphen gets a little margin on both sides: Public Sans sets it tight against the next word. */}
+        at {time} <span className="mx-0.5">-</span> {count}
+      </span>
+    )
   return <span className="ml-2">took {time}</span>
 }
 
@@ -199,12 +207,11 @@ export function TopBar() {
       <h1 className="sr-only">Agent orchestration console</h1>
       <div className="flex items-center gap-2 px-4 py-3">
         {active ? (
-          <div
-            className="bg-muted text-muted-foreground h-9 min-w-0 flex-1 truncate rounded-md px-3 text-sm leading-9"
-            title={task ?? request}
-          >
-            {task ?? request}
-          </div>
+          <ClampedText
+            text={task ?? request}
+            lines={1}
+            className="bg-muted text-muted-foreground h-9 flex-1 rounded-md px-3 text-sm leading-9"
+          />
         ) : (
           <Textarea
             aria-label="Request"
@@ -233,12 +240,16 @@ export function TopBar() {
         <span aria-live="polite" className="contents">
           <PhaseWord phase={header.phase} />
         </span>
-        {/* A cancel reads "at M:SS - N of M done": the moment of the cancel comes before the count. */}
-        {startedAt !== null && cancelled && <Elapsed phase={header.phase} />}
+        {startedAt !== null && cancelled && <Elapsed phase={header.phase} count={`${header.done} of ${header.total} done`} />}
         <span aria-live="polite" className="contents">
-          {header.total > 0 && (
-            <span className={active || cancelled ? undefined : 'ml-1.5'}>
-              {(active || cancelled) && '- '}
+          {header.total > 0 && !(cancelled && startedAt !== null) && (
+            <span className={active ? undefined : 'ml-1.5'}>
+              {/* Left of the hyphen is the row's 6px gap; a margin and a space match it on the right. */}
+              {active && (
+                <>
+                  <span className="mr-0.5">-</span>{' '}
+                </>
+              )}
               <b>
                 {header.done} of {header.total}
               </b>{' '}

@@ -9,7 +9,7 @@ import { ResultBlock } from './ResultBlock'
 vi.mock('@mock/orchestrator.js', async () => (await import('@/test/fakeOrchestrator')).fakeModule)
 
 const emit = (event: object) => act(() => emitRaw(event))
-const panel = () => within(screen.getByRole('complementary', { name: /^(Decisions waiting for you|Agent record)$/ }))
+const panel = () => within(screen.getByRole('complementary', { name: /^(Decisions|Agent record)$/ }))
 const click = (name: string | RegExp) => fireEvent.click(panel().getByRole('button', { name }))
 const openCard = (id: string) => fireEvent.click(screen.getByTestId(`agent-card-${id}`))
 const outcome = () => panel().getByRole('status')
@@ -111,6 +111,30 @@ describe('approve', () => {
     expect(outcome().textContent).toBe('Draft itApproveddrafting step')
     status('drafting', 'done')
     expect(outcome().textContent).toBe('Draft itApproveddrafting done')
+  })
+
+  it('the card badge says Sent while the command is on its way, then follows the agent', () => {
+    setup()
+    const badge = () => within(screen.getByTestId('agent-card-drafting')).getByTestId('agent-badge')
+    expect(badge().textContent).toBe('Needs approval')
+    openCard('drafting')
+    click('Approve and send')
+    expect(badge().textContent).toBe('Sent')
+    step('drafting')
+    expect(badge().textContent).toBe('Running')
+  })
+
+  it('a pending edit says Sent until the agent asks again', () => {
+    setup()
+    const badge = () => within(screen.getByTestId('agent-card-drafting')).getByTestId('agent-badge')
+    openCard('drafting')
+    click('Edit email')
+    click('Save changes')
+    expect(badge().textContent).toBe('Sent')
+    step('drafting')
+    expect(badge().textContent).toBe('Sent')
+    confirmation({ revision: 2 })
+    expect(badge().textContent).toBe('Needs approval')
   })
 
   it('a card click on an agent whose command is pending opens its record, not its decision', () => {

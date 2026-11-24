@@ -72,6 +72,12 @@ describe('agent list', () => {
     ])
   })
 
+  it('names the state in the status line before the first status', () => {
+    render(<AgentList />)
+    apply(upTo(1))
+    expect(within(card('agent_drafting')).getByTestId('agent-status-line').textContent).toBe('Queued')
+  })
+
   it('shows the empty trace text for an agent without steps', () => {
     render(<AgentList />)
     apply(upTo(1))

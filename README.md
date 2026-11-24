@@ -1,4 +1,4 @@
-Candidate write-up: [app/README.md](app/README.md)
+Run: `cd app && pnpm install && pnpm dev`. Write-up: [app/README.md](app/README.md)
 
 # Challenge 1 — Agent Orchestration Console (starter repo)
 

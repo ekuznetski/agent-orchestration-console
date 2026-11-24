@@ -10,7 +10,7 @@ vi.mock('@mock/orchestrator.js', async () => (await import('@/test/fakeOrchestra
 
 const emit = (event: object) => act(() => emitRaw(event))
 const card = (id: string) => within(screen.getByTestId(`agent-card-${id}`))
-const panel = () => within(screen.getByRole('complementary', { name: /^(Decisions waiting for you|Agent record)$/ }))
+const panel = () => within(screen.getByRole('complementary', { name: /^(Decisions|Agent record)$/ }))
 
 /** Drafting waits for approval, scheduling is running, research is done. */
 function setup() {
@@ -64,7 +64,7 @@ describe('cancel and run again', () => {
     expect(panel().getByText('Nothing needs you right now')).toBeTruthy()
     expect(panel().getByText('The run was cancelled.')).toBeTruthy()
     // The moment of the cancel comes before the count: "Run cancelled at M:SS - N of M done".
-    expect(screen.getByTestId('run-summary').textContent).toMatch(/^Run cancelled\s*at \d+:\d\d- 1 of 3 done$/)
+    expect(screen.getByTestId('run-summary').textContent).toMatch(/^Run cancelled\s*at \d+:\d\d - 1 of 3 done$/)
     expect(screen.getByRole('button', { name: 'Run again' })).toBeTruthy()
     // No control that sends a command is left, so the manager needs no guard for a missing orchestrator.
     expect(screen.queryByRole('button', { name: /^(Approve|Edit|Send answer|Retry)/ })).toBeNull()

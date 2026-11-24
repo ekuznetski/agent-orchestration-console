@@ -6,6 +6,7 @@ import { useConsoleStore } from '@/store/console.store'
 import { canRetryFromResult, isDegraded, isRetryingFromResult } from '@/store/selectors'
 import { useViewStore } from '@/store/view.store'
 import { RetryButton } from './RetryButton'
+import { ClampedText } from './ClampedText'
 
 /** The latest aggregate, above the agents. A newer result replaces it in place; a status newer
  * than the result dims it as "Updating" until then. Texts are shown verbatim. */
@@ -49,25 +50,21 @@ export function ResultBlock() {
     <section
       aria-label="Result"
       data-version={result.version}
-      className="bg-card shadow-raised flex flex-col overflow-hidden rounded-lg border border-input"
+      className="bg-card shadow-raised flex flex-col overflow-hidden rounded-lg border border-input [overflow-wrap:anywhere]"
     >
       <div className={`border-b px-6 pt-6 pb-[22px] ${look.band}`}>
         <div className="flex items-center gap-3.5">
           <look.Icon aria-hidden="true" strokeWidth={1.5} className={`size-10 shrink-0 ${look.icon}`} />
           <div className="min-w-0">
             <h2 className={`text-heading font-semibold tracking-[-0.01em] ${look.ink}`}>{head}</h2>
-            {note && (
-              <p className={`truncate text-sm leading-5 ${look.ink}`} title={note}>
-                {note}
-              </p>
-            )}
+            {note && <ClampedText text={note} lines={1} className={`text-sm leading-5 ${look.ink}`} />}
           </div>
         </div>
-        <p className={`mt-[18px] mb-0 max-w-[64ch] text-xl leading-[30px] font-medium ${updating ? 'text-muted-foreground' : ''}`}>
+        <p className={`mt-[18px] mb-0 max-w-[64ch] text-xl leading-[30px] font-medium ${updating ? 'opacity-72' : ''}`}>
           {result.event.summary}
         </p>
       </div>
-      <ul className={`m-0 list-none px-4 pt-1 pb-3 ${updating ? 'opacity-60' : ''}`}>
+      <ul className={`m-0 list-none px-4 pt-1 pb-3 ${updating ? 'opacity-72' : ''}`}>
         {result.event.items.map((item) => (
           <ResultItem key={item.id} item={item} />
         ))}
@@ -90,21 +87,21 @@ function ResultItem({ item }: { item: ResultEvent['items'][number] }) {
           {resultKindLabel(item.kind)}
         </span>
         {error ? (
-          <span className="text-faint text-xs">{label}</span>
+          <ClampedText text={label} lines={1} className="text-faint max-w-full text-xs" />
         ) : (
           // The agent's label opens its record in the panel.
           <button
             type="button"
-            className="text-faint decoration-input hover:decoration-foreground text-left text-xs underline underline-offset-2"
+            className="text-faint decoration-input hover:decoration-foreground max-w-full text-left text-xs underline underline-offset-2"
             onClick={() => openRecord(item.agentId)}
           >
-            {label}
+            <ClampedText text={label} lines={1} />
           </button>
         )}
       </div>
       <div className="flex items-start justify-between gap-4">
         <div className="flex min-w-0 flex-col text-sm leading-[21px]">
-          <b className={`font-semibold ${error ? 'text-failed' : ''}`}>{item.title}</b>
+          <ClampedText text={item.title} lines={1} className={`font-semibold ${error ? 'text-failed' : ''}`} />
           <span>{item.detail}</span>
           {item.sources && item.sources.length > 0 && (
             <div className="mt-2 flex flex-wrap gap-1.5">
@@ -115,15 +112,15 @@ function ResultItem({ item }: { item: ResultEvent['items'][number] }) {
               ))}
             </div>
           )}
+          {/* Retry goes under the error text: the result sits in the narrower left column, where a slot beside the
+              text would squeeze it. The row keeps one height, so "Retrying..." taking the button's place moves nothing. */}
+          {error && (retryable || retrying) && (
+            <div className="mt-2 flex min-h-9 items-center">
+              {retryable && <RetryButton agentId={item.agentId} label="Retry agent" />}
+              {retrying && <span className="text-muted-foreground">Retrying...</span>}
+            </div>
+          )}
         </div>
-        {/* Retry sits to the right of the error, as on the boards. The slot has a fixed width, so "Retrying..."
-            taking the button's place does not rewrap the text beside it. */}
-        {error && (
-          <div className="flex w-28 shrink-0 justify-end">
-            {retryable && <RetryButton agentId={item.agentId} label="Retry agent" />}
-            {retrying && <span className="text-muted-foreground flex h-9 items-center text-sm">Retrying...</span>}
-          </div>
-        )}
       </div>
     </li>
   )

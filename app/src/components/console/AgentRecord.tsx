@@ -3,13 +3,14 @@ import { actionLabels, agentType, effectClassLabel, resultKindLabel } from '@/co
 import type { Action } from '@/store/console.reducer'
 import { useAgent } from '@/store/hooks'
 import { useConsoleStore } from '@/store/console.store'
-import { statusLineOf } from '@/store/selectors'
+import { isSent, statusLineOf } from '@/store/selectors'
 import { StatusBadge } from './StatusBadge'
+import { ClampedText } from './ClampedText'
 
 const Row = ({ label, children }: { label: string; children: ReactNode }) => (
   <>
     <dt className="text-muted-foreground">{label}</dt>
-    <dd className="m-0 min-w-0 break-words">{children}</dd>
+    <dd className="m-0 min-w-0">{children}</dd>
   </>
 )
 
@@ -39,7 +40,7 @@ function ActionEntry({ action }: { action: Action }) {
           </Row>
         ))}
       </Fields>
-      {body !== undefined && <div className="bg-muted rounded-md px-3.5 py-3 break-words whitespace-pre-wrap">{body}</div>}
+      {body !== undefined && <div className="bg-muted rounded-md px-3.5 py-3 whitespace-pre-wrap">{body}</div>}
       {action.kind === 'approve' && (
         <p className={`text-label font-semibold ${effectClassLabel(action.effectClass).tone === 'danger' ? 'text-failed' : ''}`}>
           {effectClassLabel(action.effectClass).label}: {effectClassLabel(action.effectClass).note}
@@ -58,20 +59,19 @@ export function AgentRecord({ id }: { id: string }) {
   const items = result ? result.event.items.filter((item) => item.agentId === id) : []
 
   return (
-    <div className="flex flex-col gap-4 text-sm">
+    // overflow-wrap is inherited: an unbroken string from the mock or the user wraps instead of widening the panel.
+    <div className="flex flex-col gap-4 text-sm [overflow-wrap:anywhere]">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="text-muted-foreground text-xs font-semibold">{agentType(agent.type).name}</div>
-          <div className="text-title font-semibold">{agent.label}</div>
+          <ClampedText text={agent.label} lines={1} className="text-title font-semibold" />
         </div>
-        <StatusBadge tag={agent.tag} />
+        <StatusBadge tag={agent.tag} sent={isSent(agent)} />
       </div>
       {/* Two lines of fixed height: the full status shows, and a new one never pushes down what the user is reading. */}
       <div className="text-label grid grid-cols-[64px_minmax(0,1fr)] gap-x-3">
         <span className="text-muted-foreground">Status</span>
-        <span className="line-clamp-2 h-[2lh]" title={statusLineOf(agent) ?? undefined}>
-          {statusLineOf(agent) ?? 'No status yet'}
-        </span>
+        <ClampedText text={statusLineOf(agent) ?? 'No status yet'} lines={2} className="h-[2lh]" />
       </div>
       <section aria-label="What you did" className="flex flex-col gap-3 border-t pt-3">
         <h3 className="text-muted-foreground text-xs font-semibold">What you did</h3>

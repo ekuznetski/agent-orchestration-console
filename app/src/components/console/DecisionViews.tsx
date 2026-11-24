@@ -11,6 +11,7 @@ import type { AgentModel, Gate } from '@/store/console.reducer'
 import { useViewStore, type Answer, type Outcome } from '@/store/view.store'
 import { approve, edit, resolve } from '@/subscriptionManager/subscription'
 import { REFUSED, RetryButton } from './RetryButton'
+import { ClampedText } from './ClampedText'
 
 /** Runs a command and reports whether the mock accepted it; on true the panel stores the outcome with what was sent. */
 export type Act = (agentId: string, send: () => boolean, sent: Omit<Outcome, 'agentId'>) => boolean
@@ -18,7 +19,7 @@ export type Act = (agentId: string, send: () => boolean, sent: Omit<Outcome, 'ag
 const Row = ({ label, children }: { label: string; children: ReactNode }) => (
   <>
     <dt className="text-muted-foreground">{label}</dt>
-    <dd className="m-0 min-w-0 break-words">{children}</dd>
+    <dd className="m-0 min-w-0">{children}</dd>
   </>
 )
 
@@ -47,10 +48,11 @@ export function Frame({
   footer?: ReactNode
 }) {
   return (
-    <div className="flex flex-1 flex-col">
+    // overflow-wrap is inherited: an unbroken string from the mock or the user wraps instead of widening the panel.
+    <div className="flex min-w-0 flex-1 flex-col [overflow-wrap:anywhere]">
       <div className={`border-b px-4 py-3 ${BAND[band]}`}>
         {/* The title stays in the text colour; only a failure colours the agent's label. */}
-        <div className={`text-xs font-semibold ${band === 'failed' ? 'text-failed' : ''}`}>{who}</div>
+        <ClampedText text={who} lines={1} className={`text-xs font-semibold ${band === 'failed' ? 'text-failed' : ''}`} />
         <h3 className="mt-0.5 text-base font-semibold">{title}</h3>
       </div>
       {children && <div className="flex flex-col gap-3 p-4 text-sm">{children}</div>}
@@ -92,7 +94,7 @@ function DraftFields({ target, targetLabel, draft }: { target: string; targetLab
           </Row>
         ))}
       </Fields>
-      {body !== undefined && <div className="bg-muted rounded-md px-3.5 py-3 break-words whitespace-pre-wrap">{body}</div>}
+      {body !== undefined && <div className="bg-muted rounded-md px-3.5 py-3 whitespace-pre-wrap">{body}</div>}
     </>
   )
 }

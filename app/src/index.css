@@ -38,7 +38,7 @@
   --shadow-xs: 0 1px 0 rgb(16 27 39 / 0.06);
   --shadow-sm: 0 1px 0 rgb(16 27 39 / 0.06);
   /* Elevation: one shadow for everything that is raised (run block, result, panel, the selected card). */
-  --shadow-raised: 0 1px 2px rgb(16 27 39 / 0.1), 0 4px 14px rgb(16 27 39 / 0.1);
+  --shadow-raised: 0 4px 14px rgb(16 27 39 / 0.12), 0 1px 3px rgb(16 27 39 / 0.08);
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);

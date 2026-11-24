@@ -122,6 +122,57 @@ test('a long free-text answer is clamped to two lines in the trace, with the ful
   expect((await decided.boundingBox())!.height).toBeLessThanOrEqual(40)
 })
 
+test('a 200-character agent label and a 500-character unbroken answer overflow nothing', async ({ page, jitter }) => {
+  // The plan's label is text the console does not control: serve the mock with a 200-character Scheduling label.
+  const label = 'L'.repeat(200)
+  await page.route('**/mock/orchestrator.js*', async (route) => {
+    const response = await route.fetch()
+    const body = (await response.text()).replace('Find time for a call next week', label)
+    await route.fulfill({ response, body })
+  })
+  await startRun(page, jitter)
+  const widths = () => page.getByTestId(/^agent-card-/).evaluateAll((cards) => cards.map((el) => el.getBoundingClientRect().width))
+  const cardWidths = await widths()
+  const noPageOverflow = () => page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)
+
+  // An outcome while Scheduling waits: the Next decision button carries the long label and stays in the footer.
+  await expect(badge(page, 'scheduling')).toHaveText('Needs answer')
+  await retryResearch(page)
+  await approveDrafting(page)
+  const next = panel(page).getByRole('button', { name: /^Next decision:/ })
+  await expect(next).toBeVisible()
+  const nextBox = (await next.boundingBox())!
+  const panelBox = (await panel(page).boundingBox())!
+  expect(nextBox.x).toBeGreaterThanOrEqual(panelBox.x)
+  expect(nextBox.x + nextBox.width).toBeLessThanOrEqual(panelBox.x + panelBox.width)
+  await expect(next.locator('[title]')).toHaveAttribute('title', label)
+
+  // The answer is one unbroken 500-character string.
+  await next.click()
+  const words = 'w'.repeat(500)
+  await panel(page).getByLabel('Or answer in your own words').fill(words)
+  await panel(page).getByRole('button', { name: 'Send answer' }).click()
+  await expect(panel(page).getByText(/^Answer sent:/)).toBeVisible()
+  // The heading keeps the answer to two lines; the full text is in the record.
+  expect(
+    (await panel(page)
+      .getByText(/^Answer sent:/)
+      .boundingBox())!.height,
+  ).toBeLessThanOrEqual(48)
+  expect((await panel(page).boundingBox())!.width).toBe(panelBox.width)
+  await card(page, 'scheduling')
+    .getByRole('button', { name: /Show steps/ })
+    .click()
+  await expect(card(page, 'scheduling').locator('li', { hasText: 'Decided:' })).toBeVisible()
+  await card(page, 'scheduling')
+    .getByRole('button', { name: /Details in the panel|Decision in the panel/ })
+    .click()
+  await expect(panel(page).getByText(/^You answered:/)).toBeVisible()
+  expect(await widths()).toEqual(cardWidths)
+  expect((await panel(page).boundingBox())!.width).toBe(panelBox.width)
+  expect(await noPageOverflow()).toBe(true)
+})
+
 test('6. a failed agent shows its error and a retry; the result is separate and reads Complete', async ({ page, jitter }) => {
   await startRun(page, jitter)
   await expect(badge(page, 'research')).toHaveText('Failed')

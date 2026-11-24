@@ -3,11 +3,12 @@ import { ChevronRight } from 'lucide-react'
 import { TAGS } from '@/config/agentTags'
 import { useConsoleStore } from '@/store/console.store'
 import { useAgent, useIsShown } from '@/store/hooks'
-import { statusLineOf, waitingQueue } from '@/store/selectors'
+import { isSent, statusLineOf, waitingQueue } from '@/store/selectors'
 import { useViewStore } from '@/store/view.store'
 import { AgentTrace } from './AgentTrace'
 import { Spinner } from '@/components/ui/spinner'
 import { StatusBadge } from './StatusBadge'
+import { ClampedText } from './ClampedText'
 
 /** One agent: label, state badge, one status line, its trace on demand. Clicking the card opens its decision. */
 export function AgentCard({ id }: { id: string }) {
@@ -21,11 +22,14 @@ export function AgentCard({ id }: { id: string }) {
   const openInPanel = () => (inQueue ? select(id) : openRecord(id))
   const [open, setOpen] = useState(false)
 
-  const tone = TAGS[agent.tag].tone
+  const sent = isSent(agent)
+  // A sent command no longer needs the user: the card turns neutral until the agent answers.
+  const tone = sent ? 'neutral' : TAGS[agent.tag].tone
   // Colour means state only: amber needs you, red failed; every other card has the neutral edge.
   const edge = tone === 'attention' ? 'border-needs-bar' : tone === 'danger' ? 'border-failed' : 'border-border'
   const link = tone === 'attention' ? 'bg-needs-bar' : tone === 'danger' ? 'bg-failed' : 'bg-input'
-  const line = statusLineOf(agent) ?? ''
+  // Before its first status the slot names the state ("Queued"), so no card starts with an empty line.
+  const line = statusLineOf(agent) ?? TAGS[agent.tag].label
   const foot = inQueue ? (agent.tag === 'failed' ? 'Retry in the panel' : 'Decision in the panel') : 'Details in the panel'
   const linkButton =
     'text-foreground decoration-input hover:decoration-foreground inline-flex h-[19px] items-center gap-0.5 text-label underline underline-offset-[3px]'
@@ -37,21 +41,20 @@ export function AgentCard({ id }: { id: string }) {
       // so no interactive element is nested inside another.
       onClick={openInPanel}
       // One even 2px border for every state; selection only raises the card (shadow), so neither changes its size.
-      className={`relative flex cursor-pointer flex-col rounded-lg border-2 ${edge} bg-card ${shown ? 'shadow-raised' : ''}`}
+      className={`relative flex min-w-0 cursor-pointer flex-col rounded-lg [overflow-wrap:anywhere] border-2 ${edge} bg-card ${shown ? 'shadow-raised' : ''}`}
     >
       {shown && <span aria-hidden="true" className={`absolute top-1/2 -right-6.5 h-[3px] w-6 -translate-y-1/2 ${link}`} />}
       <div className="grid grid-cols-[minmax(0,1fr)_8rem] items-start gap-x-3 gap-y-0.5 px-4 pt-3 pb-2">
-        <b className="truncate text-title font-semibold">{agent.label}</b>
+        <ClampedText text={agent.label} lines={1} className="text-title font-semibold" />
         <div className="row-span-2 justify-self-end">
-          <StatusBadge tag={agent.tag} testId="agent-badge" />
+          <StatusBadge tag={agent.tag} sent={sent} testId="agent-badge" />
         </div>
-        <div
-          className={`h-[19px] truncate text-label ${agent.tag === 'failed' ? 'text-failed' : 'text-muted-foreground'}`}
-          title={line}
+        <ClampedText
+          text={line}
+          lines={1}
+          className={`h-[19px] text-label ${agent.tag === 'failed' ? 'text-failed' : 'text-muted-foreground'}`}
           data-testid="agent-status-line"
-        >
-          {line}
-        </div>
+        />
       </div>
       {open && <AgentTrace agent={agent} />}
       <div className="flex items-center justify-between px-4 pb-3">
