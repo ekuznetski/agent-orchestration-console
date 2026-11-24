@@ -1,7 +1,8 @@
 import { defineConfig, devices } from '@playwright/test'
+import type { ConsoleOptions } from './e2e/fixtures.ts'
 
 // https://playwright.dev/docs/test-configuration
-export default defineConfig({
+export default defineConfig<ConsoleOptions>({
   testDir: './e2e',
   testMatch: '**/*.e2e.ts',
   fullyParallel: true,
@@ -14,10 +15,9 @@ export default defineConfig({
     trace: 'on-first-retry',
   },
   projects: [
-    {
-      name: 'chromium',
-      use: { ...devices['Desktop Chrome'] },
-    },
+    // The whole suite runs twice: without and with the mock's timing jitter.
+    { name: 'chromium', use: { ...devices['Desktop Chrome'], jitter: false } },
+    { name: 'chromium-jitter', use: { ...devices['Desktop Chrome'], jitter: true } },
   ],
   webServer: {
     command: 'pnpm dev --port 5297 --strictPort',

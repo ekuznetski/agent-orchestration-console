@@ -242,10 +242,4 @@ rules).
 | `ModelError.test.tsx` | A handler that throws: the top bar warns "The screen may not match what the agents did", and later events still apply. |
 | `AppErrorFallback.test.tsx` | A render error shows the fallback; Start over calls `reset` (a stub manager, not the real one) and renders again. |
 | `mockAlias.test.ts` | The `@mock` alias loads the real mock (the only unit test that touches it). |
-| `e2e/pageLoads.e2e.ts` | The page loads in a real browser. |
-
-Planned, added as they land:
-
-| Suite | Covers |
-| --- | --- |
-| `e2e/definition-of-done.e2e.ts` | Each Definition-of-done item from the task text in a real browser with the real mock, plus a partial result retried from the result and Run again; run once without and once with jitter. |
+| `e2e/definition-of-done.e2e.ts` | Each Definition-of-done item from the task text in a real browser with the real mock at 4x (0.25x for the empty trace and the wait after Edit, so those states are asserted strictly), plus a partial result retried from the result and Cancel / Run again. Every wait is on UI state. Two Playwright projects run the whole file without and with the mock's jitter, set through the UI. |
