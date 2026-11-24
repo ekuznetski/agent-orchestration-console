@@ -25,13 +25,10 @@ const SUMMARY: Record<Phase, string> = {
 /** A run is active from Start until the agents settle; speed and jitter are fixed meanwhile. */
 const isActive = (phase: Phase) => phase === 'idle' || phase === 'running' || phase === 'finishing'
 
-function useStartRun() {
-  const [refused, setRefused] = useState(false)
-  const run = () => {
-    const { request, speed, jitter } = useViewStore.getState()
-    setRefused(!start(request.trim(), speed, jitter))
-  }
-  return { run, refused }
+/** A refused start goes back to the start card, which shows the message (`startRefused`). */
+function run() {
+  const { request, speed, jitter } = useViewStore.getState()
+  start(request.trim(), speed, jitter)
 }
 
 function DebugRow({ locked, logOpen, onToggleLog }: { locked: boolean; logOpen?: boolean; onToggleLog?: () => void }) {
@@ -62,7 +59,10 @@ function DebugRow({ locked, logOpen, onToggleLog }: { locked: boolean; logOpen?:
         <Checkbox checked={jitter} disabled={locked} onCheckedChange={(checked) => setJitter(checked)} />
         Jitter
       </Label>
-      {locked && <span>Speed is set before a run</span>}
+      {/* Always rendered, hidden when unlocked: the run ending must not move the event log toggle. */}
+      <span className={locked ? undefined : 'invisible'} aria-hidden={!locked}>
+        Speed is set before a run
+      </span>
       {onToggleLog && (
         <Button variant="link" size="xs" className="h-auto p-0 text-xs" aria-expanded={logOpen} onClick={onToggleLog}>
           Event log ({logSize})
@@ -77,7 +77,7 @@ export function StartCard() {
   const request = useViewStore((state) => state.request)
   const setRequest = useViewStore((state) => state.setRequest)
   const starting = useViewStore((state) => state.runs > 0)
-  const { run, refused } = useStartRun()
+  const refused = useViewStore((state) => state.startRefused)
   return (
     <div className="flex h-dvh flex-col">
       <div className="border-b px-3.5 py-2.5">
@@ -114,14 +114,15 @@ export function TopBar() {
   const request = useViewStore((state) => state.request)
   const setRequest = useViewStore((state) => state.setRequest)
   const [logOpen, setLogOpen] = useState(false)
-  const { run, refused } = useStartRun()
   const active = isActive(header.phase)
 
-  const counts = [`${header.done} of ${header.total} done`]
+  // No plan yet (starting, or cancelled before the plan): there is nothing to count.
+  const counts = header.total > 0 ? [`${header.done} of ${header.total} done`] : []
   if (header.needYou > 0) counts.push(`${header.needYou} ${header.needYou === 1 ? 'needs' : 'need'} you`)
 
   return (
     <header className="flex flex-col border-b">
+      <h1 className="sr-only">Agent orchestration console</h1>
       <div className="flex flex-col gap-1.5 px-3.5 py-2.5">
         <div className="flex items-center gap-2">
           {active ? (
@@ -152,8 +153,7 @@ export function TopBar() {
         </div>
         <div className="flex items-baseline gap-1.5 overflow-hidden whitespace-nowrap" data-testid="run-summary">
           <b>{SUMMARY[header.phase]}</b>
-          <span>- {counts.join(', ')}</span>
-          {refused && <span style={{ color: 'var(--tone-danger)' }}>The orchestrator did not start the run.</span>}
+          {counts.length > 0 && <span>- {counts.join(', ')}</span>}
           {modelError && <span style={{ color: 'var(--tone-danger)' }}>The screen may not match what the agents did</span>}
         </div>
         <DebugRow locked={active} logOpen={logOpen} onToggleLog={() => setLogOpen(!logOpen)} />

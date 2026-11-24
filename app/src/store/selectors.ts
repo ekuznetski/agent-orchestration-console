@@ -53,29 +53,20 @@ export interface RunHeader {
   done: number
   total: number
   needYou: number
-  /** The attempt number being retried right now, or null. */
-  retryingAttempt: number | null
 }
 
 export function runHeader(state: RunState): RunHeader {
   const agents = (state.plan?.order ?? []).map((id) => state.agents[id])
-  let retryingAttempt: number | null = null
-  for (const agent of agents) {
-    if ((agent.tag === 'queued' || agent.tag === 'running') && agent.attempts.length > 1) {
-      retryingAttempt = Math.max(retryingAttempt ?? 0, agent.attempts.at(-1)!.n)
-    }
-  }
   return {
     phase: phaseOf(state),
     done: agents.filter((agent) => agent.status?.state === 'done').length,
     total: agents.length,
     needYou: waitingQueue(state).length,
-    retryingAttempt,
   }
 }
 
 export type TraceRow =
-  | { kind: 'step'; seq: number; number: number; step: AgentStepEvent }
+  | { kind: 'step'; seq: number; step: AgentStepEvent }
   | {
       kind: 'failure'
       seq: number
@@ -89,20 +80,18 @@ export interface TraceAttempt {
   rows: TraceRow[]
 }
 
-/** Steps grouped by attempt in seq order, numbered across attempts, with the failure that ended an attempt. */
+/** Steps grouped by attempt in seq order, with the failure that ended an attempt. */
 export function traceOf(agent: AgentModel): TraceAttempt[] {
   const groups: TraceAttempt[] = agent.attempts.map((attempt) => ({
     n: attempt.n,
     rows: [],
   }))
-  let number = 0
   for (const step of agent.steps) {
     let i = agent.attempts.length - 1
     while (i > 0 && agent.attempts[i].startSeq > step.seq) i--
     groups[i].rows.push({
       kind: 'step',
       seq: step.seq,
-      number: ++number,
       step,
     })
   }

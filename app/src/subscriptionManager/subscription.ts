@@ -24,7 +24,7 @@ function stop(): void {
   orchestrator = null
 }
 
-/** Starts a new run. Returns the mock's answer: false means it refused to start. */
+/** Starts a new run. Returns the mock's answer: false means it refused to start and the start card shows again. */
 export function start(request: string, speed: number, jitter: boolean): boolean {
   stop()
   apply({ type: 'run_reset' })
@@ -32,7 +32,12 @@ export function start(request: string, speed: number, jitter: boolean): boolean 
   orchestrator = createMockOrchestrator({ speed, jitter })
   // The mock delivers only events emitted after subscribe, so subscribe before start().
   unsubscribe = orchestrator.subscribe((event) => apply(event))
-  return orchestrator.start(request)
+  if (orchestrator.start(request)) return true
+  // start() returns false (mock/orchestrator.d.ts): nothing runs, so it is not a run; back to the start card.
+  stop()
+  apply({ type: 'run_reset' })
+  useViewStore.getState().runRefused()
+  return false
 }
 
 /** Stops the run; everything stays on screen and unfinished agents become cancelled. */

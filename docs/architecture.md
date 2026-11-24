@@ -22,7 +22,7 @@ mock orchestrator --events--> SubscriptionManager --apply(event)--> console stor
 | Derived data | `src/store/selectors.ts` | Pure functions over `RunState`: run header, phase, pending command, trace, decision queue. |
 | React access | `src/store/hooks.ts` | Small selector hooks so a component subscribes only to what it renders. One agent is read by reference (`useAgent`), so an event for another agent does not re-render it; objects and arrays built by selectors (`runHeader`, `decisionQueue`) are compared field by field (`useShallow`). |
 | Screen state | `src/store/view.store.ts` | Which decision is shown, the outcome of the last action, request text, speed, jitter, run count, open edits, question answers. Not part of the run model. |
-| Labels | `src/config/agentTags.ts` | Words, icons and tones per tag, action, result kind and effect class, with generic fallbacks. |
+| Labels | `src/config/agentTags.ts` | Words and tones per tag, agent type, action, result kind and effect class, with generic fallbacks. |
 | Components | `src/components/console/*` | Rendering and user input only. |
 
 ## 2. Transport: `SubscriptionManager`
@@ -33,9 +33,12 @@ Plain module functions (an ES module is already a singleton): `start`, `cancel`,
 - `start(request, speed, jitter)`: stops the previous run, applies `run_reset`, clears screen state (selection,
   outcome, edits) and counts the run in `view.store.runs`, creates a new orchestrator with the speed and jitter,
   subscribes before `start()` (the mock delivers only events emitted after `subscribe`), then calls `start` and
-  returns its boolean.
+  returns its boolean. When `start` returns `false` (`mock/orchestrator.d.ts`), nothing runs: the manager stops
+  the orchestrator, applies `run_reset` and calls `runRefused`, which does not count the run (`runs` 0) and
+  sets `startRefused`, so the start card shows again with "The orchestrator did not start the run."
 - `cancel()`: unsubscribes, `reset()`s the mock (cancels its timers), applies `run_cancelled`.
 - `reset()`: used by the error fallback's "Start over"; stops the run and goes back to the start card.
+
 What each call clears in the view store (request, speed and jitter always stay):
 
 | Call | Run state | Selection, outcome | Open edits | `runs` |
@@ -50,7 +53,7 @@ What each call clears in the view store (request, speed and jitter always stay):
   never arrives inside the call. `afterSeq` is the agent's `maxSeq` read before the call. `command_sent` also
   carries what was actually sent (section 3, Actions), so the agent record can show it later. A command sent while the agent's previous command is still
   pending does not reach the mock and returns `true` (it is already in flight), so it never reads as refused.
-  Components show their own "no longer waiting" text when a command is refused.
+  Components show "The agent did not accept this action" when a command is refused.
 
 ## 3. Run model: `reduce`
 
@@ -66,7 +69,6 @@ What each call clears in the view store (request, speed and jitter always stay):
 | `log` | Every contract event in arrival order, with `late`. |
 | `maxSeq` | Highest seq received in the run, for `late`. Each agent also keeps its own `maxSeq`. |
 | `modelError` | Set when a handler throws; the top bar warns that the screen may not match what the agents did. |
-
 
 `reduce(state, event, at)` handles three local events and every contract event:
 
@@ -138,9 +140,9 @@ actually sent, read when the handler returned `true` (a refused command records 
 | Function | Returns |
 | --- | --- |
 | `phaseOf` | `idle`, `running`, `finishing` (settled, no current result yet or it is outdated), `completed`, `partial` (degraded), `cancelled`. |
-| `runHeader` | Phase, done count, total, "need you" count (`waitingQueue` length), the attempt being retried. |
+| `runHeader` | Phase, done count, total, "need you" count (`waitingQueue` length). |
 | `pendingCommand(agent)` | The command the agent has not answered yet, or null. There is no ack in the API, so: `edit` is answered only by a newer gate (the re-emitted confirmation); any other command by any newer event of that agent. |
-| `traceOf(agent)` | Steps grouped by attempt, in seq order, numbered across attempts, with the failure row that ended an attempt (its status line, plus the raw error when `retryable` is false). No row for the user's own commands: the "Attempt N" divider says a retry happened, and after approve, edit and resolve the agent reports its own step. |
+| `traceOf(agent)` | Steps grouped by attempt, in seq order, with the failure row that ended an attempt (its status line, plus the raw error when `retryable` is false). No row for the user's own commands: the "Attempt N" divider says a retry happened, and after approve, edit and resolve the agent reports its own step. |
 | `decisionQueue` | Agents with a decision in the panel, oldest wait first: open gate (by `openedSeq`), retryable failure (by its status seq), or an edit waiting for the agent. Empty after a cancel. |
 | `waitingQueue` | `decisionQueue` without agents whose command is pending: what the user can act on now. |
 | `statusLineOf(agent)` | The card's status line: the newest text by seq of the latest status and the latest step; a failed agent keeps its status line; a cancelled one shows "Last status: " + its last status line. |
@@ -158,7 +160,8 @@ is not in the queue and gets no Retry; a failure without `error` is offered Retr
 | `outcome` | What the user sent, stored when the mock accepted the command: `{ agentId, kind, answer?, attempt? }` for approve, edit, resolve or retry. Never rebuilt from the run model, so it cannot disappear when the agent answers. The panel shows it until the user moves. |
 | `focusRequest` | A counter bumped by `select`, `openRecord` and `backToDecisions`; the panel moves focus to what it then shows. Reset to 0 by `start` and `reset`. |
 | `request`, `speed`, `jitter` | The request text and the mock's speed and jitter (creation options), shared by the start card and the top bar. |
-| `runs` | How many runs were started; the start card shows until the first run has its plan. |
+| `startRefused` | The mock refused the last `start`; the start card shows the message until the next start. |
+| `runs` | How many runs were started (a refused start is not counted); the start card shows until the first run has its plan. |
 | `edits` | Per agent: an open editor `{ draft }`. Survives switching decisions; removed by Cancel edit and when the mock accepts the edit (what was sent is in the agent's actions). |
 | `answers` | Per agent: a question's picked option and typed words. Picking an option keeps the words; typing makes the words the answer. Survives switching decisions; cleared on a new run and on reset. |
 
@@ -198,15 +201,16 @@ Component-local state: open trace (`AgentCard`), open event log (`TopBar`), the 
 | Component | Reads | Does |
 | --- | --- | --- |
 | `App` | plan order, plan task, run key, `runs` | Start card until the first plan; then top bar, result, agents, decision panel. Cards are keyed by run so a new run remounts them. |
-| `StartCard` (`TopBar.tsx`) | request, speed, jitter, `runs` | Request, speed and jitter before the first run; "Starting..." and off until the plan arrives; off for an empty request. |
-| `TopBar` | run header, plan task, log size | Request (shows `plan.task` while the run works), Cancel run / Run again, one-line summary (with "The screen may not match what the agents did" while `modelError` is set, until the next run), Debug row (speed and jitter are fixed during a run), event log toggle. |
-| `ResultBlock` | latest result, run header, request, speed, jitter | The result above the agents, appearing once it arrives (when it first appears it pushes the agents down once per run: the one allowed stream-caused layout shift); complete, partial, updating (outdated) or cancelled; Retry on an error item whose agent the user can retry now (the partial note says "retry it" only then); after the click the item's button row and the note keep their place and read "Retrying..." (the note: "Retrying... This result updates when the agent finishes.") until a newer result replaces the block, so a retry from the result does not move the agents; after a cancel a result that already arrived stays, marked "From before the run was cancelled.", with no Retry (Run again is in the top bar). |
+| `StartCard` (`TopBar.tsx`) | request, speed, jitter, `runs` | Request, speed and jitter before the first run; "Starting..." and off until the plan arrives; off for an empty request. After a refused start: "The orchestrator did not start the run." |
+| `TopBar` | run header, plan task, log size | A visually hidden h1 "Agent orchestration console" (the start card and the error fallback have their own h1). Request (shows `plan.task` while the run works), Cancel run / Run again, one-line summary (no counts before the plan; with "The screen may not match what the agents did" while `modelError` is set, until the next run), Debug row (speed and jitter are fixed during a run; the note "Speed is set before a run" keeps its space when hidden, so the run ending does not move the event log toggle), event log toggle. |
+| `ResultBlock` | latest result, run header, request, speed, jitter | The result above the agents, appearing once it arrives (when it first appears it pushes the agents down once per run: the one allowed stream-caused layout shift); complete, partial, updating (outdated) or cancelled; Retry on an error item whose agent the user can retry now (the partial note says "Retry it to update this result" only then); after the click the item's button row and the note keep their place and read "Retrying..." (the note: "Retrying... This result updates when the agent finishes.") until a newer result replaces the block, so a retry from the result does not move the agents; after a cancel a result that already arrived stays, marked "From before the run was cancelled.", with no Retry (Run again is in the top bar). |
 | `AgentCard` | its agent, waiting for the user, is shown | Label, badge, one truncated status line, Show steps. Clicking the card selects it: an agent the user can act on now (in `waitingQueue`) shows its decision; any other agent, one whose command is still pending included, opens its record in the panel. Footer button (the keyboard path): "Decision in the panel" for an approval or a question, "Retry in the panel" for a retryable failure (Retry is in the panel only), otherwise "Details in the panel". Fixed badge column. The status line is the newest of the status and the last step (after an answer the agent reports a step before its next status); failed keeps its status line; a cancelled agent shows "Last status: " + its last status line. The selected card (a decision, an outcome or a record) gets the ring and connector. |
+| `AgentList` (`AgentCard.tsx`) | plan order, run status | One card per agent in plan order; "Planning..." before the plan, or "The run was cancelled before the plan arrived." after a cancel. |
 | `AgentTrace` | its agent | `traceOf`; "Attempt N" dividers appear once there is a second attempt; a "Working" row with the status line while the agent runs, only if that status is newer than its last gate and the attempt has steps; empty text without steps. An open trace is capped at 400px with its own scroll; a new step scrolls it to the bottom unless the user scrolled up. |
-| `DecisionPanel` | shown decision, outcome, waiting count | One decision at a time: failure, confirmation (view, editor, edited version) or question. After an accepted command the outcome replaces the decision: the first line is what was sent ("Approved", "Edited version sent", "Answer sent: ...", "Retry sent: attempt N"), the second line is the agent now ("Waiting for the agent to respond." while the command is pending, then "Now: <tag> - <status line>"). Under it, in a slot of fixed height, "Next decision: <agent>" when a decision waits (the outcome's own agent first when it asks again, otherwise the longest wait), or "Nothing else needs you right now."; the switch happens only on click. Empty: "The agents are starting" while every agent is queued, otherwise worded by phase. In `agent` mode the panel shows the record instead, with "Back to decisions (N)" (N = waiting decisions) in the header. |
+| `DecisionPanel` | shown decision, outcome, waiting count | One decision at a time: failure, confirmation (view, editor, edited version) or question. After an accepted command the outcome replaces the decision: the first line is what was sent ("Approved", "Edited version sent", "Answer sent: ...", "Retry sent: attempt N"), the second line is the agent now ("Waiting for the agent to respond." while the command is pending, then "Now: <tag> - <status line>"). Under it, in a slot of fixed height, "Next decision: <agent>" when a decision waits (the outcome's own agent first when it asks again, otherwise the longest wait), or "Nothing else needs you right now."; the switch happens only on click. Empty: "The run was cancelled." after a cancel (also before the plan), "The agents are starting" while every agent is queued, otherwise worded by phase. In `agent` mode the panel shows the record instead, with "Back to decisions (N)" (N = waiting decisions) in the header. The panel landmark is named "Decisions waiting for you", or "Agent record" while a record is open. The failure decision says "The 1 step ... stays" or "The N steps ... stay". |
 | `AgentRecord` | its agent, its result items, its actions | What one agent did and what the user sent: current status line; its result items (`result.items` for that agent, marked "Updating" while the result is outdated); "You approved" with the full sent draft (To, Subject, other fields, body, revision); "You sent an edited version"; "You answered: ..."; "You retried: attempt N". The trace stays in the card. |
 | `RetryButton` | its agent | The one Retry used by the panel and the partial result; in `decisions` mode it stores its outcome when the panel is about that agent or already shows an outcome; a retry from the result never replaces another agent's open decision or an open record. |
-| `EventLog` | raw log | Debug table of every event, late rows marked, failure rows red, Copy JSON. |
+| `EventLog` | raw log | Debug table of every event, late rows marked, failure rows red, Copy JSON. A fixed height (14rem) with its own scroll: streamed events never grow the page. |
 | `AppErrorFallback` | - | Error boundary fallback with "Start over" (`SubscriptionManager.reset`). |
 
 ## 7. Data flow of one decision
@@ -245,20 +249,23 @@ Component-local state: open trace (`AgentCard`), open event log (`TopBar`), the 
 
 ## 9. Tests
 
-Every test file is named after what it covers (e.g. `LayoutStates.test.tsx` for the layout and state
-rules).
+Every test file is named after what it covers (e.g. `CancelledRun.test.tsx` for Cancel run and Run again).
+
+Unit and component tests test the app, not the mock: every test that reaches `@mock/orchestrator.js` (directly,
+through the subscription manager, or through the view store's default request) replaces it with the fake module
+in `src/test/fakeOrchestrator.ts`. Only `mockAlias.test.ts` loads the real mock.
 
 | Suite | Covers |
 | --- | --- |
 | `console.reducer.test.ts` | Every event type, late events, attempts, gates and revisions, result replacement, cancel, the raw log, a handler that throws, the edit seam (a step between `edit()` and the re-emitted confirmation keeps `needs_approval` and the queue place). |
 | `selectors.test.ts` | Run header, pending command, the retry lifecycle, trace grouping, decision queue order (edit keeps its place), retryable, status line. |
-| `subscription.test.ts` | The manager against a fake orchestrator (the real mock is never loaded): subscribe before start asserted directly, speed and jitter passed, a second start stops the previous run, commands recorded only when accepted, `afterSeq` read before the call, a pending command not sent again, what `start`, `cancel` and `reset` clear. |
-| `AgentList.test.tsx` | N agents give N cards, a fourth agent type, a card updated in place, trace order with the late step, the empty trace, Done kept after the late step. |
-| `PanelSelection.test.ts` | Which decision the panel shows, the outcome kept after the run ends, the outcome first in `shownDecisionNow`, `select` vs `pin`. |
-| `Actions.test.tsx` | Against a fake orchestrator: approve and its outcome, a double click sent once, the outcome kept while the agent answers and the run ends with its second line following the agent, a card click on a pending agent opening its record, edit with kept text and the re-asked confirmation offered first, an unknown action, answers by option and by own words, retry from the panel and from a partial result (the error row and the note kept as "Retrying..."), a refused command and its clearing, the Next decision button (longest wait, no switch by itself, absent while nothing waits, added when a decision arrives), a decision that arrives not replacing the one on screen; focus after Edit, Save, Approve and a card click, and not taken by a decision that opens in the empty panel. |
-| `AgentRecord.test.tsx` | The record shows the approved email after the gate closed; an arriving decision does not replace an open record and N grows; Back to decisions returns to the pinned decision; a refused command records nothing. |
-| `CancelledRun.test.tsx` | Cancel mid-run with an open decision and a running agent: cards Cancelled with "Last status: ...", the queue empty, "Run cancelled", Run again; an open record stays; Run again starts with the edited request and clears screen state per section 2. |
+| `subscription.test.ts` | The manager against a fake orchestrator (the real mock is never loaded): subscribe before start asserted directly, speed and jitter passed, a refused start stopped and not counted, a second start stops the previous run, commands recorded only when accepted, `afterSeq` read before the call, a pending command not sent again, what `start`, `cancel` and `reset` clear. |
+| `AgentList.test.tsx` | With the fake mock module: N agents give N cards, a fourth agent type, a card updated in place, trace order with the late step, the empty trace, Done kept after the late step. |
+| `PanelSelection.test.ts` | With the fake mock module: which decision the panel shows, the outcome kept after the run ends, the outcome first in `shownDecisionNow`, `select` vs `pin`. |
+| `Actions.test.tsx` | Against a fake orchestrator: approve and its outcome with no Approve left for a second click (the manager's guard against a second command is tested in `subscription.test.ts`), the outcome kept while the agent answers and the run ends with its second line following the agent, a card click on a pending agent opening its record, edit with kept text and the re-asked confirmation offered first, an unknown action, answers by option and by own words, retry from the panel and from a partial result (the error row and the note kept as "Retrying..."), a refused command and its clearing, the Next decision button (longest wait, no switch by itself, absent while nothing waits, added when a decision arrives), a decision that arrives not replacing the one on screen; focus after Edit, Save, Approve and a card click, and not taken by a decision that opens in the empty panel. |
+| `AgentRecord.test.tsx` | The record shows the approved email after the gate closed; an arriving decision does not replace an open record and N grows; Back to decisions returns to the pinned decision; a refused command records nothing; the panel landmark is named after what it shows. |
+| `CancelledRun.test.tsx` | Cancel mid-run with an open decision and a running agent: cards Cancelled with "Last status: ...", the queue empty, "Run cancelled", Run again; an open record stays; Run again starts with the edited request and clears screen state per section 2; a Run again the mock refuses returns to the start card with its message; Cancel before the plan shows the cancelled state, not "Planning..."; the console has one h1. |
 | `ModelError.test.tsx` | A handler that throws: the top bar warns "The screen may not match what the agents did", and later events still apply. |
 | `AppErrorFallback.test.tsx` | A render error shows the fallback; Start over calls `reset` (a stub manager, not the real one) and renders again. |
 | `mockAlias.test.ts` | The `@mock` alias loads the real mock (the only unit test that touches it). |
-| `e2e/definition-of-done.e2e.ts` | Each Definition-of-done item from the task text in a real browser with the real mock at 4x (0.25x for the empty trace and the wait after Edit, so those states are asserted strictly), plus a partial result retried from the result (the agent cards keep their position while it retries) and Cancel / Run again. Every wait is on UI state. Two Playwright projects run the whole file without and with the mock's jitter, set through the UI. |
+| `e2e/definition-of-done.e2e.ts` | Each Definition-of-done item from the task text in a real browser with the real mock at 4x (0.25x for the empty trace and the wait after Edit, so those states are asserted strictly), item 4 checks "not sent" only after the other agents have reached their own waits; plus agent cards keeping their position (every frame) while decisions open and close until the result arrives, a partial result retried from the result (the agent cards keep their position while it retries) Cancel / Run again, and the open event log keeping its height and its toggle its place while events stream. Every wait is on UI state. Two Playwright projects run the whole file without and with the mock's jitter, set through the UI. |

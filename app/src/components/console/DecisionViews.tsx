@@ -223,7 +223,8 @@ export function FailureDecision({ agent }: { agent: AgentModel }) {
         )}
       </div>
       <p className="text-muted-foreground">
-        The {steps} steps of attempt {attempt.n} stay in its trace. Retry starts attempt {attempt.n + 1}.
+        The {steps} {steps === 1 ? 'step' : 'steps'} of attempt {attempt.n} {steps === 1 ? 'stays' : 'stay'} in its trace. Retry starts
+        attempt {attempt.n + 1}.
       </p>
       <RetryButton agentId={agent.id} />
     </div>

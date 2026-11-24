@@ -68,17 +68,15 @@ describe('runHeader and phaseOf', () => {
       done: 3,
       total: 3,
       needYou: 0,
-      retryingAttempt: null,
     })
   })
 
-  it('counts the open approval and the retry in flight mid-run', () => {
+  it('counts the open approval mid-run', () => {
     expect(runHeader(run(upTo(20)))).toEqual({
       phase: 'running',
       done: 0,
       total: 3,
       needYou: 1,
-      retryingAttempt: 2,
     })
   })
 
@@ -134,7 +132,7 @@ describe('retry lifecycle', () => {
 })
 
 describe('traceOf', () => {
-  it('groups research steps by attempt, numbered across attempts, with the failure row', () => {
+  it('groups research steps by attempt, with the failure row', () => {
     const trace = traceOf(run(events).agents.agent_research)
     expect(trace.map((a) => a.n)).toEqual([1, 2])
     expect(trace[0].rows.map((r) => [r.kind, r.seq])).toEqual([
@@ -144,7 +142,6 @@ describe('traceOf', () => {
       ['step', 12],
       ['failure', 15],
     ])
-    expect(trace[1].rows.map((r) => (r.kind === 'step' ? r.number : null))).toEqual([5, 6, 7])
     const failure = trace[0].rows[4]
     expect(failure.kind === 'failure' && failure.error).toBeNull()
   })

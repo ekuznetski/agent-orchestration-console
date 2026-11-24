@@ -13,7 +13,7 @@ export { expect }
 
 export const card = (page: Page, id: string) => page.getByTestId(`agent-card-agent_${id}`)
 export const badge = (page: Page, id: string) => card(page, id).getByTestId('agent-badge')
-export const panel = (page: Page) => page.getByRole('complementary', { name: 'Decisions waiting for you' })
+export const panel = (page: Page) => page.getByRole('complementary', { name: /^(Decisions waiting for you|Agent record)$/ })
 
 /** Opens the console, sets the speed (4x unless a test needs to see a short-lived state) and the
  * project's jitter through the UI, and starts the run. */

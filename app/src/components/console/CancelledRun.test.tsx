@@ -10,7 +10,7 @@ vi.mock('@mock/orchestrator.js', async () => (await import('@/test/fakeOrchestra
 
 const emit = (event: object) => act(() => emitRaw(event))
 const card = (id: string) => within(screen.getByTestId(`agent-card-${id}`))
-const panel = () => within(screen.getByRole('complementary', { name: 'Decisions waiting for you' }))
+const panel = () => within(screen.getByRole('complementary', { name: /^(Decisions waiting for you|Agent record)$/ }))
 
 /** Drafting waits for approval, scheduling is running, research is done. */
 function setup() {
@@ -104,5 +104,32 @@ describe('cancel and run again', () => {
       jitter: true,
     })
     expect(screen.getByTestId('run-summary').textContent).toContain('Starting')
+  })
+
+  it('Run again refused by the mock goes back to the start card with a message', () => {
+    setup()
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel run' }))
+    fakeOrchestrator.start.mockReturnValueOnce(false)
+    fireEvent.click(screen.getByRole('button', { name: 'Run again' }))
+    expect(screen.getByRole('heading', { name: 'What should the agents do?' })).toBeTruthy()
+    expect(screen.getByText('The orchestrator did not start the run.')).toBeTruthy()
+    expect((screen.getByRole('button', { name: 'Start run' }) as HTMLButtonElement).disabled).toBe(false)
+  })
+
+  it('Cancel before the plan arrives shows the cancelled state, not Planning...', () => {
+    setup()
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel run' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Run again' }))
+    expect(screen.getByText('Planning...')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel run' }))
+    expect(screen.queryByText('Planning...')).toBeNull()
+    expect(screen.getByText('The run was cancelled before the plan arrived.')).toBeTruthy()
+    expect(screen.getByTestId('run-summary').textContent).toBe('Run cancelled')
+    expect(panel().getByText('The run was cancelled.')).toBeTruthy()
+  })
+
+  it('the console has one h1', () => {
+    setup()
+    expect(screen.getAllByRole('heading', { level: 1 }).map((h) => h.textContent)).toEqual(['Agent orchestration console'])
   })
 })

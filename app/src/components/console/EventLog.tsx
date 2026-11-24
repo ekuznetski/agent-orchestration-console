@@ -42,7 +42,7 @@ export function EventLog() {
           Copy JSON
         </Button>
       </div>
-      <div className="max-h-56 overflow-auto">
+      <div className="h-56 overflow-auto">
         <table className="w-full font-mono text-xs">
           <thead className="text-muted-foreground text-left">
             <tr>

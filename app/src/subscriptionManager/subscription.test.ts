@@ -75,9 +75,14 @@ describe('start', () => {
     expect(fake.calls).toEqual(['subscribe', 'start', 'unsubscribe', 'reset', 'subscribe', 'start'])
   })
 
-  it("returns the orchestrator's refusal", () => {
+  it("returns the orchestrator's refusal, stops it and does not count the run", () => {
+    useViewStore.getState().setRequest('Kept request')
     fake.orchestrator.start.mockReturnValueOnce(false)
     expect(start('Task', 1, false)).toBe(false)
+    expect(fake.calls.slice(-2)).toEqual(['unsubscribe', 'reset'])
+    expect(useViewStore.getState()).toMatchObject({ runs: 0, startRefused: true, request: 'Kept request' })
+    startWithGate()
+    expect(useViewStore.getState()).toMatchObject({ runs: 1, startRefused: false })
   })
 
   it('puts delivered events into the run store', () => {

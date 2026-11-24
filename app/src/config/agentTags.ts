@@ -1,4 +1,3 @@
-import { Bot, Calendar, Mail, Search, type LucideIcon } from 'lucide-react'
 import type { AgentTag } from '@/store/console.reducer'
 
 /** Colour means state only: neutral grey, active blue, one yellow, one red, one green. */
@@ -17,13 +16,13 @@ export const TAGS: Record<AgentTag, { label: string; tone: Tone }> = {
   cancelled: { label: 'Cancelled', tone: 'neutral' },
 }
 
-const AGENT_TYPES: Record<string, { name: string; icon: LucideIcon }> = {
-  research: { name: 'Research', icon: Search },
-  drafting: { name: 'Drafting', icon: Mail },
-  scheduling: { name: 'Scheduling', icon: Calendar },
+const AGENT_TYPES: Record<string, { name: string }> = {
+  research: { name: 'Research' },
+  drafting: { name: 'Drafting' },
+  scheduling: { name: 'Scheduling' },
 }
 
-export const agentType = (type: string) => AGENT_TYPES[type] ?? { name: 'Agent', icon: Bot }
+export const agentType = (type: string) => AGENT_TYPES[type] ?? { name: 'Agent' }
 
 const ACTS: Record<string, string> = { searched: 'Searched', read: 'Read', decided: 'Decided' }
 

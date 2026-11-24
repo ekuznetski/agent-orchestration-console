@@ -9,7 +9,7 @@ import { ResultBlock } from './ResultBlock'
 vi.mock('@mock/orchestrator.js', async () => (await import('@/test/fakeOrchestrator')).fakeModule)
 
 const emit = (event: object) => act(() => emitRaw(event))
-const panel = () => within(screen.getByRole('complementary', { name: 'Decisions waiting for you' }))
+const panel = () => within(screen.getByRole('complementary', { name: /^(Decisions waiting for you|Agent record)$/ }))
 const click = (name: string | RegExp) => fireEvent.click(panel().getByRole('button', { name }))
 const openCard = (id: string) => fireEvent.click(screen.getByTestId(`agent-card-${id}`))
 const outcome = () => panel().getByRole('status')
@@ -86,16 +86,20 @@ afterEach(() => {
 })
 
 describe('approve', () => {
-  it('shows the outcome after approve; a double click calls approve once', () => {
+  it('shows the outcome after approve, and no Approve is left for a second click', () => {
+    // The manager's own guard against a second command while one is pending is in subscription.test.ts.
     setup()
     openCard('drafting')
     expect(panel().getByText('Send this email?')).toBeTruthy()
     expect(panel().getByText('maya@example.test')).toBeTruthy()
     const button = panel().getByRole('button', { name: 'Approve and send' })
     fireEvent.click(button)
-    fireEvent.click(button)
     expect(fakeOrchestrator.approve).toHaveBeenCalledTimes(1)
+    expect(button.isConnected).toBe(false)
+    expect(panel().queryByRole('button', { name: 'Approve and send' })).toBeNull()
     expect(within(outcome()).getByText('Approved')).toBeTruthy()
+    openCard('drafting')
+    expect(panel().queryByRole('button', { name: 'Approve and send' })).toBeNull()
   })
 
   it('keeps the outcome while the agent answers and the run ends; the second line follows the agent', () => {
@@ -192,7 +196,7 @@ describe('retry', () => {
   it('retries from the panel and shows which attempt was sent', () => {
     setup()
     expect(panel().getByText('Retry this agent?')).toBeTruthy()
-    expect(panel().getByText('The 1 steps of attempt 1 stay in its trace. Retry starts attempt 2.')).toBeTruthy()
+    expect(panel().getByText('The 1 step of attempt 1 stays in its trace. Retry starts attempt 2.')).toBeTruthy()
     click('Retry')
     expect(fakeOrchestrator.retry).toHaveBeenCalledWith('research')
     expect(outcome().textContent).toBe('Retry sent: attempt 2Waiting for the agent to respond.')

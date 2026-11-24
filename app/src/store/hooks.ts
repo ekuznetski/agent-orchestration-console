@@ -1,14 +1,12 @@
 import { useShallow } from 'zustand/react/shallow'
 import { useConsoleStore } from './console.store'
-import { decisionQueue, runHeader, waitingQueue } from './selectors'
+import { runHeader, waitingQueue } from './selectors'
 import { useViewStore, type Outcome } from './view.store'
 
 /** One agent by reference: an event for another agent does not re-render the reader. */
 export const useAgent = (id: string) => useConsoleStore((state) => state.agents[id])
 
 export const useRunHeader = () => useConsoleStore(useShallow(runHeader))
-
-export const useDecisionQueue = () => useConsoleStore(useShallow(decisionQueue))
 
 export const useWaitingQueue = () => useConsoleStore(useShallow(waitingQueue))
 

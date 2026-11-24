@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, renderHook } from '@testing-library/react'
 import type { OrchestratorEvent } from '@mock/orchestrator.js'
 import fixture from '../../../fixtures/events.json'
@@ -6,6 +6,9 @@ import { initialState, type ConsoleEvent } from './console.reducer'
 import { useConsoleStore } from './console.store'
 import { shownDecisionNow, useShownDecision, useVisibleOutcome } from './hooks'
 import { useViewStore } from './view.store'
+
+// The view store reads the default request from the mock module; the fake keeps the real mock out of this test.
+vi.mock('@mock/orchestrator.js', async () => (await import('@/test/fakeOrchestrator')).fakeModule)
 
 const events = fixture as OrchestratorEvent[]
 const apply = (list: ConsoleEvent[]) => act(() => list.forEach((event) => useConsoleStore.getState().apply(event)))

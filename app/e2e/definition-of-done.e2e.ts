@@ -1,3 +1,4 @@
+/// <reference lib="dom" />
 import { answerScheduling, approveDrafting, badge, card, expect, panel, retryResearch, startRun, test } from './fixtures.ts'
 
 // Each test is one item of the task's Definition of done, against the real app and the real mock at 4x.
@@ -51,6 +52,9 @@ test('4. a confirmation does not fire until approved; Edit forces a fresh approv
   await expect(badge(page, 'drafting')).toHaveText('Needs approval', { timeout: 60_000 })
   await drafting.getByRole('button', { name: 'Decision in the panel' }).click()
   await expect(panel(page).getByText('Send this email?')).toBeVisible()
+  // Not sent while waiting: let the other agents go on until they too wait for the user, then check again.
+  await expect(badge(page, 'research')).toHaveText('Failed', { timeout: 60_000 })
+  await expect(badge(page, 'scheduling')).toHaveText('Needs answer', { timeout: 60_000 })
   await expect(badge(page, 'drafting')).toHaveText('Needs approval')
   await expect(drafting.getByTestId('agent-status-line')).not.toContainText('Sent')
 
@@ -127,4 +131,53 @@ test('Cancel run keeps the screen; Run again starts a fresh run', async ({ page,
   await expect(page.getByTestId('run-summary')).not.toContainText('Run cancelled')
   await expect(page.getByTestId(/^agent-card-/)).toHaveCount(3)
   await expect(page.getByTestId('agent-badge').filter({ hasText: 'Cancelled' })).toHaveCount(0)
+})
+
+test('the open event log keeps its height and its toggle its place while events stream', async ({ page, jitter }) => {
+  await startRun(page, jitter)
+  const toggle = page.getByRole('button', { name: /^Event log/ })
+  await toggle.click()
+  const log = page.getByText('Arrival order.', { exact: false }).locator('xpath=..').locator('xpath=..')
+  const first = await log.boundingBox()
+  const toggleX = (await toggle.boundingBox())!.x
+  await expect(badge(page, 'drafting')).toHaveText('Needs approval')
+  await retryResearch(page)
+  await approveDrafting(page)
+  await answerScheduling(page)
+  await expect(page.getByRole('region', { name: 'Result' }).getByRole('heading', { name: 'Complete' })).toBeVisible()
+  expect(await log.boundingBox()).toEqual(first)
+  expect((await toggle.boundingBox())!.x).toBe(toggleX)
+})
+
+test('agent cards keep their position while decisions open and close', async ({ page, jitter }) => {
+  await startRun(page, jitter)
+  // Every frame until the result arrives (the one allowed shift), record any card that moved.
+  await page.evaluate(() => {
+    const seen: Record<string, string> = {}
+    const moves: string[] = []
+    ;(window as unknown as { moves: string[]; seen: object }).moves = moves
+    ;(window as unknown as { moves: string[]; seen: object }).seen = seen
+    const tick = () => {
+      if (document.querySelector('[aria-label="Result"]')) return
+      document.querySelectorAll<HTMLElement>('[data-testid^="agent-card-"]').forEach((el) => {
+        const box = el.getBoundingClientRect()
+        const at = `${box.top},${box.height}`
+        const id = el.dataset.testid!
+        if (!(id in seen)) seen[id] = at
+        else if (seen[id] !== at) moves.push(`${id}: ${seen[id]} -> ${at}`)
+      })
+      requestAnimationFrame(tick)
+    }
+    tick()
+  })
+  await retryResearch(page)
+  await approveDrafting(page)
+  await answerScheduling(page)
+  await expect(page.getByRole('region', { name: 'Result' })).toBeVisible()
+  const watched = await page.evaluate(() => {
+    const { moves, seen } = window as unknown as { moves: string[]; seen: object }
+    return { moves, seen }
+  })
+  expect(Object.keys(watched.seen)).toHaveLength(3)
+  expect(watched.moves).toEqual([])
 })

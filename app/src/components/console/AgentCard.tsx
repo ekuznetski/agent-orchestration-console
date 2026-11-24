@@ -22,7 +22,6 @@ export function AgentCard({ id }: { id: string }) {
   const color = toneColor(tag.tone)
   const line = statusLineOf(agent) ?? ''
   const foot = inQueue ? (agent.tag === 'failed' ? 'Retry in the panel' : 'Decision in the panel') : 'Details in the panel'
-  const selected = shown
 
   return (
     <div
@@ -31,9 +30,9 @@ export function AgentCard({ id }: { id: string }) {
       // so no interactive element is nested inside another.
       onClick={openInPanel}
       className="bg-card relative flex cursor-pointer flex-col gap-1 rounded-md border border-t-[3px] px-3 py-2.5"
-      style={{ borderTopColor: color, boxShadow: selected ? `0 0 0 2px ${color}` : undefined }}
+      style={{ borderTopColor: color, boxShadow: shown ? `0 0 0 2px ${color}` : undefined }}
     >
-      {selected && <span aria-hidden="true" className="absolute top-1/2 -right-3.5 w-3.5 border-t-2" style={{ borderColor: color }} />}
+      {shown && <span aria-hidden="true" className="absolute top-1/2 -right-3.5 w-3.5 border-t-2" style={{ borderColor: color }} />}
       <div className="grid grid-cols-[minmax(0,1fr)_8rem] items-center gap-2">
         <b className="truncate">{agent.label}</b>
         <span
@@ -59,19 +58,17 @@ export function AgentCard({ id }: { id: string }) {
         >
           {open ? 'Hide steps' : `Show steps (${agent.steps.length})`}
         </button>
-        {foot && (
-          <button
-            type="button"
-            className="hover:underline"
-            aria-pressed={selected}
-            onClick={(e) => {
-              e.stopPropagation()
-              openInPanel()
-            }}
-          >
-            {foot}
-          </button>
-        )}
+        <button
+          type="button"
+          className="hover:underline"
+          aria-pressed={shown}
+          onClick={(e) => {
+            e.stopPropagation()
+            openInPanel()
+          }}
+        >
+          {foot}
+        </button>
       </div>
       {open && <AgentTrace agent={agent} />}
     </div>
@@ -80,7 +77,8 @@ export function AgentCard({ id }: { id: string }) {
 
 export function AgentList() {
   const order = useConsoleStore((state) => state.plan?.order)
-  if (!order) return <p className="text-muted-foreground">Planning...</p>
+  const cancelled = useConsoleStore((state) => state.status === 'cancelled')
+  if (!order) return <p className="text-muted-foreground">{cancelled ? 'The run was cancelled before the plan arrived.' : 'Planning...'}</p>
   return (
     <div className="grid grid-cols-[minmax(0,1fr)] items-start gap-2.5">
       {order.map((id) => (

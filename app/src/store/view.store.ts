@@ -37,6 +37,8 @@ export interface ViewStore {
   speed: number
   jitter: boolean
   runs: number
+  /** The mock refused the last start; the start card says so until the next start. */
+  startRefused: boolean
   edits: Record<string, EditEntry>
   answers: Record<string, Answer>
   /** Picks a decision, switches to decisions mode and clears the outcome. */
@@ -53,11 +55,21 @@ export interface ViewStore {
   setEdit: (agentId: string, entry: EditEntry | null) => void
   setAnswer: (agentId: string, answer: Answer) => void
   runStarted: () => void
+  runRefused: () => void
   runCancelled: () => void
   runReset: () => void
 }
 
-const cleared = { mode: 'decisions' as const, selectedId: null, recordId: null, outcome: null, focusRequest: 0, edits: {}, answers: {} }
+const cleared = {
+  mode: 'decisions' as const,
+  selectedId: null,
+  recordId: null,
+  outcome: null,
+  focusRequest: 0,
+  startRefused: false,
+  edits: {},
+  answers: {},
+}
 
 export const useViewStore = create<ViewStore>()((set) => ({
   ...cleared,
@@ -82,6 +94,7 @@ export const useViewStore = create<ViewStore>()((set) => ({
     }),
   setAnswer: (agentId, answer) => set((state) => ({ answers: { ...state.answers, [agentId]: answer } })),
   runStarted: () => set((state) => ({ ...cleared, runs: state.runs + 1 })),
+  runRefused: () => set({ ...cleared, runs: 0, startRefused: true }),
   runCancelled: () => set({ outcome: null }),
   runReset: () => set({ ...cleared, runs: 0 }),
 }))

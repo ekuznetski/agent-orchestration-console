@@ -10,10 +10,10 @@ import { AgentRecord } from './AgentRecord'
 import { ConfirmationDecision, FailureDecision, QuestionDecision, type Act } from './DecisionViews'
 
 function emptyLine(phase: ReturnType<typeof phaseOf>, allQueued: boolean): string {
+  if (phase === 'cancelled') return 'The run was cancelled.'
   if (phase === 'idle' || allQueued) return 'The agents are starting. New decisions open here.'
   if (phase === 'running') return 'Agents keep working. New decisions open here.'
   if (phase === 'finishing') return 'The agents are done. The result appears above the agents.'
-  if (phase === 'cancelled') return 'The run was cancelled.'
   return 'The run is finished. The result is above the agents.'
 }
 
@@ -138,7 +138,8 @@ export function DecisionPanel() {
 
   return (
     <aside
-      aria-label="Decisions waiting for you"
+      // The landmark is named after what it shows: the decisions, or the open record.
+      aria-label={recordId ? 'Agent record' : 'Decisions waiting for you'}
       // Any next user action in the panel clears a refused-command message; the action itself may set it again.
       onClickCapture={() => setRefusedId(null)}
       onChangeCapture={() => setRefusedId(null)}
