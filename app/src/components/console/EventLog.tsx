@@ -52,8 +52,7 @@ export function EventLog() {
     <section aria-label="Event log" className="border-t">
       <div className="flex items-center gap-3 px-4 py-2">
         <span className="text-muted-foreground flex-1 text-xs">
-          {log.length} events received{lateCount > 0 && ` - ${lateCount} arrived late`}. Arrival order; late: delivered after an event with
-          a higher seq.
+          {log.length} events received{lateCount > 0 && ` - ${lateCount} arrived late`}
         </span>
         <Button
           variant="link"

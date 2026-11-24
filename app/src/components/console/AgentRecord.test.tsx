@@ -4,6 +4,7 @@ import { emit as emitRaw, fakeOrchestrator } from '@/test/fakeOrchestrator'
 import { reset, start } from '@/subscriptionManager/subscription'
 import { AgentList } from './AgentCard'
 import { DecisionPanel } from './DecisionPanel'
+import { useViewStore } from '@/store/view.store'
 
 vi.mock('@mock/orchestrator.js', async () => (await import('@/test/fakeOrchestrator')).fakeModule)
 
@@ -108,11 +109,27 @@ describe('agent record', () => {
     expect(did.compareDocumentPosition(result) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
   })
 
-  it('stays open when a decision arrives; its footer offers the next decision', () => {
+  it("stays open when another agent's decision arrives; its footer offers the next decision", () => {
     setup({ waiting: false })
     openCard('drafting')
     expect(panel().getByRole('button', { name: 'Next decision: Research it' })).toBeTruthy()
+    escalation()
+    expect(panel().getByText('Agent record')).toBeTruthy()
+    expect(panel().getByRole('button', { name: 'Next decision: Research it' })).toBeTruthy()
+  })
+
+  it("opens the decision when the record's own agent starts waiting", () => {
+    setup({ waiting: false })
+    openCard('drafting')
+    expect(panel().getByText('Agent record')).toBeTruthy()
     confirmation()
+    expect(panel().getByText('Send this email?')).toBeTruthy()
+    expect(document.activeElement).toBe(panel().getByRole('group', { name: 'Draft it' }))
+  })
+
+  it('a record opened on an agent that already waits stays a record, and its footer offers that agent', () => {
+    setup({ waiting: false })
+    act(() => useViewStore.getState().openRecord('research'))
     expect(panel().getByText('Agent record')).toBeTruthy()
     expect(panel().getByRole('button', { name: 'Next decision: Research it' })).toBeTruthy()
   })

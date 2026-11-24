@@ -130,6 +130,7 @@ describe('approve', () => {
     const badge = () => within(screen.getByTestId('agent-card-drafting')).getByTestId('agent-badge')
     openCard('drafting')
     click('Edit email')
+    fireEvent.change(panel().getByLabelText('Subject'), { target: { value: 'Changed' } })
     click('Save changes')
     expect(badge().textContent).toBe('Waiting for agent')
     step('drafting')
@@ -149,7 +150,7 @@ describe('approve', () => {
 })
 
 describe('edit', () => {
-  it('keeps typed text across switching, sends the edit, then offers the re-asked confirmation first', () => {
+  it('keeps typed text across switching, sends the edit, waits, then opens the re-asked confirmation', () => {
     setup()
     openCard('drafting')
     click('Edit email')
@@ -164,15 +165,16 @@ describe('edit', () => {
     fireEvent.change(panel().getByLabelText('Message'), { target: { value: 'New body' } })
     click('Save changes')
     expect(fakeOrchestrator.edit).toHaveBeenCalledWith('drafting', { subject: 'New subject', body: 'New body' })
-    expect(outcome().textContent).toBe('Draft itEdit submittedThe agent prepares the edited email; you approve it next.')
-    expect(panel().getByRole('button', { name: 'Next decision: Research it' })).toBeTruthy()
+    // The waiting state: no status line, no Next decision for this agent (others may still be offered).
+    expect(outcome().textContent).toBe('Draft itEdit submittedThe agent is preparing the edited email...')
+    expect(panel().queryByRole('button', { name: 'Next decision: Draft it' })).toBeNull()
 
     step('drafting')
-    expect(outcome().textContent).toBe('Draft itEdit submittedThe agent prepares the edited email; you approve it next.')
+    expect(outcome().textContent).toBe('Draft itEdit submittedThe agent is preparing the edited email...')
     confirmation({ draft: { subject: 'New subject', body: 'New body' }, revision: 2 })
-    expect(within(outcome()).getByText('Edit submitted')).toBeTruthy()
-    click('Next decision: Draft it')
+    // The answer to the user's own Save opens by itself, focused on the decision, not on Approve.
     expect(panel().getByText('Send the edited email?')).toBeTruthy()
+    expect(document.activeElement).toBe(panel().getByRole('group', { name: 'Draft it' }))
     expect(panel().getByText('Edited version')).toBeTruthy()
     click('Approve and send')
     expect(fakeOrchestrator.approve).toHaveBeenCalledWith('drafting')
@@ -188,6 +190,27 @@ describe('edit', () => {
     expect(panel().getByText('This action changes nothing')).toBeTruthy()
     confirmation({ effectClass: 'billing' })
     expect(panel().getByText('Side effect: the agent acts on your behalf')).toBeTruthy()
+  })
+
+  it('does not switch to the re-asked confirmation when the user moved away', () => {
+    setup()
+    openCard('drafting')
+    click('Edit email')
+    fireEvent.change(panel().getByLabelText('Subject'), { target: { value: 'Changed' } })
+    click('Save changes')
+    click('Next decision: Research it')
+    expect(panel().getByText('Retry this agent?')).toBeTruthy()
+    confirmation({ revision: 2 })
+    expect(panel().getByText('Retry this agent?')).toBeTruthy()
+  })
+
+  it('ignores the second click of a double click on Approve and Edit', () => {
+    setup()
+    openCard('drafting')
+    fireEvent.click(panel().getByRole('button', { name: 'Approve and send' }), { detail: 2 })
+    fireEvent.click(panel().getByRole('button', { name: 'Edit email' }), { detail: 2 })
+    expect(fakeOrchestrator.approve).not.toHaveBeenCalled()
+    expect(panel().getByText('Send this email?')).toBeTruthy()
   })
 
   it('labels an unknown action generically and shows every draft field', () => {
@@ -285,16 +308,17 @@ describe('retry', () => {
       items: [{ id: 'e', agentId: 'research', kind: 'error', title: 'Research failed', detail: 'jira timed out' }],
     })
     expect(screen.getByText('Partial result')).toBeTruthy()
-    fireEvent.click(screen.getByRole('button', { name: 'Retry agent' }))
+    expect(screen.getByText('1 of 3 agents failed - retry it to complete the result')).toBeTruthy()
+    fireEvent.click(within(screen.getByRole('region', { name: 'Result' })).getByRole('button', { name: 'Retry' }))
     expect(fakeOrchestrator.retry).toHaveBeenCalledWith('research')
     expect(panel().getByText('Retry sent: attempt 2')).toBeTruthy()
     const result = within(screen.getByRole('region', { name: 'Result' }))
     expect(result.getByText('Retrying...')).toBeTruthy()
-    expect(result.getByText('Retrying... This result updates when the agent finishes.')).toBeTruthy()
+    expect(result.getByText('This result is outdated - attempt 2 of Research it is running')).toBeTruthy()
     status('research', 'running', { attempt: 2 })
     expect(result.getByText('Updating')).toBeTruthy()
     expect(result.getByText('Retrying...')).toBeTruthy()
-    expect(result.getByText('Retrying... This result updates when the agent finishes.')).toBeTruthy()
+    expect(result.getByText('This result is outdated - attempt 2 of Research it is running')).toBeTruthy()
   })
 })
 
@@ -312,7 +336,7 @@ describe('refused command', () => {
     })
     const result = within(screen.getByRole('region', { name: 'Result' }))
     fakeOrchestrator.retry.mockReturnValueOnce(false)
-    fireEvent.click(result.getByRole('button', { name: 'Retry agent' }))
+    fireEvent.click(result.getByRole('button', { name: 'Retry' }))
     expect(result.getByText('The agent did not accept this action')).toBeTruthy()
     fireEvent.click(screen.getByTestId('agent-card-drafting'))
     expect(result.queryByText('The agent did not accept this action')).toBeNull()
@@ -367,8 +391,21 @@ describe('focus', () => {
     expect(document.activeElement).toBe(panel().getByRole('group', { name: 'Draft it' }))
     click('Edit email')
     expect(document.activeElement).toBe(panel().getByLabelText('Subject'))
+    fireEvent.change(panel().getByLabelText('Subject'), { target: { value: 'Changed' } })
     click('Save changes')
     expect(document.activeElement).toBe(panel().getByRole('button', { name: 'Next decision: Research it' }))
+  })
+
+  it('keeps Save changes disabled until the draft differs from the current revision', () => {
+    setup()
+    openCard('drafting')
+    click('Edit email')
+    const save = () => panel().getByRole('button', { name: 'Save changes' }) as HTMLButtonElement
+    expect(save().disabled).toBe(true)
+    fireEvent.change(panel().getByLabelText('Subject'), { target: { value: 'Hello again' } })
+    expect(save().disabled).toBe(false)
+    fireEvent.change(panel().getByLabelText('Subject'), { target: { value: 'Hello' } })
+    expect(save().disabled).toBe(true)
   })
 
   it('returns to the Edit button after Cancel edit', () => {

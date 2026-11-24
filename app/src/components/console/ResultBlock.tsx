@@ -18,9 +18,15 @@ export function ResultBlock() {
   const canRetry = useConsoleStore((state) =>
     (state.result?.event.items ?? []).some((item) => item.kind === 'error' && canRetryFromResult(state, item.agentId)),
   )
-  const anyRetrying = useConsoleStore((state) =>
-    (state.result?.event.items ?? []).some((item) => item.kind === 'error' && isRetryingFromResult(state, item.agentId)),
-  )
+  // While a retry from the result runs: which attempt of which agent, as one string (a primitive).
+  const retrying = useConsoleStore((state) => {
+    const item = (state.result?.event.items ?? []).find((item) => item.kind === 'error' && isRetryingFromResult(state, item.agentId))
+    if (!item) return null
+    const agent = state.agents[item.agentId]
+    // The attempt the accepted Retry started, known before the agent reports it.
+    const sent = agent.actions.findLast((action) => action.kind === 'retry')
+    return `attempt ${sent?.kind === 'retry' ? sent.attempt : agent.attempts[agent.attempts.length - 1].n} of ${agent.label}`
+  })
   if (!result) return null
 
   const degraded = isDegraded(result.event)
@@ -39,11 +45,11 @@ export function ResultBlock() {
   const note = cancelled
     ? `This is the result from before the run was cancelled.${failedCount > 0 ? ` ${failedCount} of ${total} agents had failed.` : ''}`
     : canRetry
-      ? 'An agent failed. Retry it to update this result.'
-      : anyRetrying
-        ? 'Retrying... This result updates when the agent finishes.'
+      ? `${failedCount} of ${total} agents failed - retry ${failedCount === 1 ? 'it' : 'them'} to complete the result`
+      : retrying
+        ? `This result is outdated - ${retrying} is running`
         : !degraded && !updating
-          ? `All ${total} agents finished`
+          ? `All ${total} agents finished${result.version > 1 ? '. Updated after retry.' : ''}`
           : null
 
   return (
@@ -106,7 +112,7 @@ function ResultItem({ item }: { item: ResultEvent['items'][number] }) {
           {item.sources && item.sources.length > 0 && (
             <div className="mt-2 flex flex-wrap gap-1.5">
               {item.sources.map((source) => (
-                <Badge key={source} variant="outline" className="bg-card text-muted-foreground">
+                <Badge key={source} variant="outline" className="bg-card text-muted-foreground h-[22px] px-2.5">
                   {source}
                 </Badge>
               ))}
@@ -117,7 +123,7 @@ function ResultItem({ item }: { item: ResultEvent['items'][number] }) {
             button's place does not rewrap the text beside it. */}
         {error && (retryable || retrying) && (
           <div className="flex w-28 shrink-0 justify-end">
-            {retryable && <RetryButton agentId={item.agentId} label="Retry agent" />}
+            {retryable && <RetryButton agentId={item.agentId} label="Retry" />}
             {retrying && <span className="text-muted-foreground flex h-9 items-center text-sm">Retrying...</span>}
           </div>
         )}

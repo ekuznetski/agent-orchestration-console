@@ -10,6 +10,7 @@ import { useClearOnNextAction } from '@/hooks/useClearOnNextAction'
 import { AgentRecord } from './AgentRecord'
 import { ConfirmationDecision, FailureDecision, Frame, QuestionDecision, type Act } from './DecisionViews'
 import { ClampedText } from './ClampedText'
+import { Spinner } from '@/components/ui/spinner'
 
 function emptyLine(phase: ReturnType<typeof phaseOf>, allQueued: boolean): string {
   if (phase === 'cancelled') return 'The run was cancelled.'
@@ -40,11 +41,22 @@ function sentLine(outcome: Outcome): string {
   return `Retry sent: attempt ${outcome.attempt}`
 }
 
+/** The agent asked again after the user's submitted edit: the edited version waits for approval. */
+function editReady(outcome: Outcome, agent: AgentModel): boolean {
+  return outcome.kind === 'edit' && agent.tag === 'needs_approval' && pendingCommand(agent) === null
+}
+
+/** A submitted edit the agent has not answered yet: the outcome shows a spinner with what the agent does. */
+function editWaiting(outcome: Outcome, agent: AgentModel): string | null {
+  const pending = pendingCommand(agent)
+  return outcome.kind === 'edit' && pending?.kind === 'edit' && agent.gate?.event.type === 'confirmation_required'
+    ? actionLabels(agent.gate.event.action).editPending
+    : null
+}
+
 /** Where the agent is now, from the model: its status line, verbatim. A submitted edit says what happens next. */
 function nowLine(agent: AgentModel): string {
   const pending = pendingCommand(agent)
-  if (pending?.kind === 'edit' && agent.gate?.event.type === 'confirmation_required')
-    return actionLabels(agent.gate.event.action).editPending
   if (pending) return 'Waiting for the agent to respond.'
   return statusLineOf(agent) ?? ''
 }
@@ -62,7 +74,7 @@ function NextDecisionFooter({
 }) {
   const nextAgent = useConsoleStore((state) => (nextId ? state.agents[nextId] : null))
   return (
-    <div className="mt-auto flex h-[61px] items-center justify-end border-t px-4">
+    <div data-testid="panel-footer" className="mt-auto flex h-[61px] items-center justify-end border-t px-4">
       {nextAgent ? (
         // The prefix stays and a long label truncates, so the button never leaves the footer. Prefix and label are
         // two flex items: a word-space gap (gap-1), and the accessible name spelled out.
@@ -93,6 +105,7 @@ function OutcomeView({ outcome, onNext }: { outcome: Outcome; onNext: (id: strin
     const queue = waitingQueue(state)
     return queue.includes(outcome.agentId) ? outcome.agentId : (queue[0] ?? null)
   })
+  const waiting = editWaiting(outcome, agent)
   const now = nowLine(agent)
   const statusRef = useRef<HTMLDivElement>(null)
   const nextRef = useRef<HTMLButtonElement>(null)
@@ -112,7 +125,14 @@ function OutcomeView({ outcome, onNext }: { outcome: Outcome; onNext: (id: strin
           // At most two lines: a long own-words answer stays whole in the record, not in the heading.
           title={<ClampedText text={sentLine(outcome)} lines={2} />}
         >
-          <ClampedText text={now} lines={2} className="text-muted-foreground h-[2lh]" />
+          {waiting ? (
+            <p className="text-muted-foreground flex h-[2lh] items-start gap-1.5">
+              <Spinner decorative className="mt-[0.2lh]" />
+              {waiting}
+            </p>
+          ) : (
+            <ClampedText text={now} lines={2} className="text-muted-foreground h-[2lh]" />
+          )}
         </Frame>
       </div>
       <NextDecisionFooter nextId={next} buttonRef={nextRef} onNext={onNext} />
@@ -145,6 +165,26 @@ export function DecisionPanel() {
   useEffect(() => {
     if (focusRequest > 0) (recordRef.current ?? decisionRef.current)?.focus()
   }, [focusRequest])
+
+  // The one switch the panel makes by itself: the edited confirmation the user's own Save asked for, while the
+  // panel still shows that Save's outcome. Moving away (a card click, Next decision) clears the outcome, so no
+  // switch then. Focus goes to the decision, not to Approve.
+  const outcomeAgent = useConsoleStore((state) => (outcome ? state.agents[outcome.agentId] : null))
+  const reasked = outcome !== null && outcomeAgent !== null && editReady(outcome, outcomeAgent)
+  useEffect(() => {
+    if (reasked && outcome) select(outcome.agentId)
+  }, [reasked, outcome, select])
+
+  // The record's agent starts waiting for the user (its confirmation or question arrived while the user reads its
+  // record): the panel opens that agent's decision, the same agent the user is looking at. Only on the change
+  // from not waiting to waiting, so a record opened on an agent that already waits stays a record.
+  const recordWaits = useConsoleStore((state) => (recordId ? waitingQueue(state).includes(recordId) : false))
+  const recordWaited = useRef<{ id: string | null; waits: boolean }>({ id: null, waits: false })
+  useEffect(() => {
+    const before = recordWaited.current
+    recordWaited.current = { id: recordId, waits: recordWaits }
+    if (recordId && recordWaits && before.id === recordId && !before.waits) select(recordId)
+  }, [recordId, recordWaits, select])
 
   // Pin what is shown, so a decision that arrives later with a lower seq never takes its place.
   useEffect(() => {
@@ -185,8 +225,9 @@ export function DecisionPanel() {
           <div className="p-4">
             <AgentRecord id={recordId} />
           </div>
-          {/* The same footer as under an outcome: the picked decision if it still waits, otherwise the longest wait. */}
-          <NextDecisionFooter nextId={shownId} onNext={move} />
+          {/* The same footer as under an outcome: the record's own agent if it waits, then the picked decision if it
+              still waits, otherwise the longest wait. */}
+          <NextDecisionFooter nextId={recordWaits ? recordId : shownId} onNext={move} />
         </>
       ) : (
         <>

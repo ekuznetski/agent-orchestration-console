@@ -72,6 +72,59 @@ describe('cancel and run again', () => {
     expect(screen.queryByRole('button', { name: /^(Approve|Edit|Send answer|Retry)/ })).toBeNull()
   })
 
+  it('an approve still waiting for the agent ends as Cancelled, not Waiting for agent', () => {
+    setup()
+    fireEvent.click(panel().getByRole('button', { name: 'Approve and send' }))
+    expect(card('drafting').getByTestId('agent-badge').textContent).toBe('Waiting for agent')
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel run' }))
+    expect(card('drafting').getByTestId('agent-badge').textContent).toBe('Cancelled')
+  })
+
+  it('an edit still waiting for the agent ends as Cancelled', () => {
+    setup()
+    fireEvent.click(panel().getByRole('button', { name: 'Edit email' }))
+    fireEvent.change(panel().getByLabelText('Subject'), { target: { value: 'Changed' } })
+    fireEvent.click(panel().getByRole('button', { name: 'Save changes' }))
+    expect(card('drafting').getByTestId('agent-badge').textContent).toBe('Waiting for agent')
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel run' }))
+    expect(card('drafting').getByTestId('agent-badge').textContent).toBe('Cancelled')
+  })
+
+  it('an answer still waiting for the agent ends as Cancelled', () => {
+    setup()
+    emit({
+      type: 'escalation_required',
+      seq: 6,
+      agentId: 'scheduling',
+      question: 'Which week?',
+      context: 'Context',
+      options: [{ id: 'a', label: 'Week A' }],
+    })
+    fireEvent.click(screen.getByTestId('agent-card-scheduling'))
+    fireEvent.click(panel().getByText('Week A'))
+    fireEvent.click(panel().getByRole('button', { name: 'Send answer' }))
+    expect(card('scheduling').getByTestId('agent-badge').textContent).toBe('Waiting for agent')
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel run' }))
+    expect(card('scheduling').getByTestId('agent-badge').textContent).toBe('Cancelled')
+  })
+
+  it('a retry still waiting for the agent ends as Cancelled', () => {
+    setup()
+    emit({
+      type: 'agent_status',
+      seq: 6,
+      agentId: 'scheduling',
+      state: 'failed',
+      statusLine: 'Failed',
+      error: { code: 'x', message: 'timed out', retryable: true },
+    })
+    fireEvent.click(screen.getByTestId('agent-card-scheduling'))
+    fireEvent.click(panel().getByRole('button', { name: 'Retry' }))
+    expect(card('scheduling').getByTestId('agent-badge').textContent).toBe('Waiting for agent')
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel run' }))
+    expect(card('scheduling').getByTestId('agent-badge').textContent).toBe('Cancelled')
+  })
+
   it('keeps an open agent record when the run is cancelled', () => {
     setup()
     fireEvent.click(screen.getByTestId('agent-card-research'))
@@ -158,7 +211,7 @@ describe('cancel and run again', () => {
       items: [{ id: 'e', agentId: 'research', kind: 'error', title: 'Research failed', detail: 'jira timed out' }],
     })
     const result = within(screen.getByRole('region', { name: 'Result' }))
-    fireEvent.click(result.getByRole('button', { name: 'Retry agent' }))
+    fireEvent.click(result.getByRole('button', { name: 'Retry' }))
     emit({ type: 'agent_status', seq: 10, agentId: 'research', state: 'running', statusLine: 'Retrying', attempt: 2 })
     expect(result.getByText('Updating')).toBeTruthy()
     expect(result.getByText('Retrying...')).toBeTruthy()
@@ -168,7 +221,7 @@ describe('cancel and run again', () => {
     expect(result.getByText('This is the result from before the run was cancelled. 1 of 3 agents had failed.')).toBeTruthy()
     expect(result.queryByText('Updating')).toBeNull()
     expect(result.queryByText(/Retrying/)).toBeNull()
-    expect(result.queryByRole('button', { name: 'Retry agent' })).toBeNull()
+    expect(result.queryByRole('button', { name: 'Retry' })).toBeNull()
   })
 
   it('an accepted Retry on a partial result makes the run active again; the clock skips the idle time', () => {
@@ -197,7 +250,7 @@ describe('cancel and run again', () => {
     expect(screen.getByRole('button', { name: 'Run again' })).toBeTruthy()
 
     act(() => vi.advanceTimersByTime(60_000))
-    fireEvent.click(within(screen.getByRole('region', { name: 'Result' })).getByRole('button', { name: 'Retry agent' }))
+    fireEvent.click(within(screen.getByRole('region', { name: 'Result' })).getByRole('button', { name: 'Retry' }))
     // Accepted, the agent has not answered yet: the run is active.
     expect(screen.getByRole('button', { name: 'Cancel run' })).toBeTruthy()
     expect(screen.getByRole('checkbox', { name: 'Jitter' }).getAttribute('data-disabled')).not.toBeNull()
@@ -220,11 +273,13 @@ describe('cancel and run again', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Run again' }))
     const summary = within(screen.getByTestId('run-summary'))
     expect(summary.getByText('Starting')).toBeTruthy()
-    expect(summary.getByRole('status', { name: 'Loading' })).toBeTruthy()
+    // In the run line the spinner is decorative: the phase word is already announced by the live region.
+    expect(screen.getByTestId('run-summary').querySelector('svg.animate-spin, svg[class*="animate-spin"]')).toBeTruthy()
+    expect(summary.queryByRole('status', { name: 'Loading' })).toBeNull()
     expect(within(screen.getByText('Planning...')).getByRole('status', { name: 'Loading' })).toBeTruthy()
     emit({ type: 'plan', seq: 1, runId: 'r2', task: 'T', subtasks: [{ id: 'research', type: 'research', label: 'Research it' }] })
     emit({ type: 'agent_status', seq: 2, agentId: 'research', state: 'running', statusLine: 'Working' })
     expect(summary.getByText('Running')).toBeTruthy()
-    expect(summary.getByRole('status', { name: 'Loading' })).toBeTruthy()
+    expect(screen.getByTestId('run-summary').querySelector('svg[class*="animate-spin"]')).toBeTruthy()
   })
 })

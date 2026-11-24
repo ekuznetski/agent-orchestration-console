@@ -77,14 +77,17 @@ test('4. a confirmation does not fire until approved; Edit forces a fresh approv
   await expect(drafting.getByTestId('agent-status-line')).not.toContainText('Sent')
 
   await panel(page).getByRole('button', { name: 'Edit email' }).click()
+  // Save waits for a real change.
+  await expect(panel(page).getByRole('button', { name: 'Save changes' })).toBeDisabled()
   await panel(page).getByLabel('Subject').fill('Edited in the e2e test')
-  await panel(page).getByRole('button', { name: 'Save changes' }).click()
+  // A double click on Save: the second click must not approve whatever opens under it.
+  await panel(page).getByRole('button', { name: 'Save changes' }).dblclick()
   await expect(panel(page).getByRole('status')).toHaveText(
-    'Draft a follow-up to Maya ChenEdit submittedThe agent prepares the edited email; you approve it next.',
+    'Draft a follow-up to Maya ChenEdit submittedThe agent is preparing the edited email...',
   )
   await expect(panel(page).getByRole('button', { name: 'Approve and send' })).toHaveCount(0)
-  await panel(page).getByRole('button', { name: 'Next decision: Draft a follow-up to Maya Chen' }).click({ timeout: 15_000 })
-  await expect(panel(page).getByText('Send the edited email?')).toBeVisible()
+  // The edited confirmation opens by itself: it answers the user's own Save.
+  await expect(panel(page).getByText('Send the edited email?')).toBeVisible({ timeout: 15_000 })
   await expect(badge(page, 'drafting')).toHaveText('Needs approval')
 
   await panel(page).getByRole('button', { name: 'Approve and send' }).click()
@@ -210,10 +213,11 @@ test('a partial result is retried from its error item and becomes Complete', asy
   await expect(result.getByRole('heading', { name: 'Partial result' })).toBeVisible()
   // The cards may move only when the newer result replaces this one; the block itself never goes away.
   await watchLayout(page)
-  await result.getByRole('button', { name: 'Retry agent' }).click()
+  await result.getByRole('button', { name: 'Retry', exact: true }).click()
   await expect(result.getByText('Retrying...', { exact: true })).toBeVisible()
   await expect(result.getByRole('heading', { name: 'Updating' })).toBeVisible()
   await expect(result.getByRole('heading', { name: 'Complete' })).toBeVisible()
+  await expect(result.getByText('All 3 agents finished. Updated after retry.')).toBeVisible()
   const watch = await layoutWatch(page)
   expect(watch.versions).toEqual([2])
   expect(watch.violations).toEqual([])
@@ -226,10 +230,12 @@ test('Cancel during a retry of a partial result keeps the partial result as it w
   await answerScheduling(page)
   const result = page.getByRole('region', { name: 'Result' })
   await expect(result.getByRole('heading', { name: 'Partial result' })).toBeVisible()
-  await result.getByRole('button', { name: 'Retry agent' }).click()
+  await result.getByRole('button', { name: 'Retry', exact: true }).click()
   await expect(result.getByText('Retrying...', { exact: true })).toBeVisible()
   await page.getByRole('button', { name: 'Cancel run' }).click()
   await expect(result.getByRole('heading', { name: 'Run cancelled' })).toBeVisible()
+  // The retried agent ends Cancelled, not waiting for an answer that will never come.
+  await expect(badge(page, 'research')).toHaveText('Cancelled')
   await expect(result.getByText('This is the result from before the run was cancelled. 1 of 3 agents had failed.')).toBeVisible()
   await expect(result.getByText(/Retrying/)).toHaveCount(0)
 })
@@ -311,6 +317,21 @@ test('with a trace open, only the cards below it move, and only while the trace 
   await expect(page.getByRole('region', { name: 'Result' }).getByRole('heading', { name: 'Complete' })).toBeVisible()
   const watch = await layoutWatch(page)
   expect(watch.versions).toEqual([1])
+  expect(watch.violations).toEqual([])
+})
+
+test("Drafting's open trace may grow and shrink (Working row, then the gate); only the cards below it move", async ({ page, jitter }) => {
+  await startRun(page, jitter)
+  await card(page, 'drafting')
+    .getByRole('button', { name: /Show steps/ })
+    .click()
+  await watchLayout(page, 'agent-card-agent_drafting')
+  await expect(badge(page, 'drafting')).toHaveText('Needs approval')
+  await retryResearch(page)
+  await approveDrafting(page)
+  await answerScheduling(page)
+  await expect(page.getByRole('region', { name: 'Result' }).getByRole('heading', { name: 'Complete' })).toBeVisible()
+  const watch = await layoutWatch(page)
   expect(watch.violations).toEqual([])
 })
 

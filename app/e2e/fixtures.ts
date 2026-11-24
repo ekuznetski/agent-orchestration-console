@@ -49,11 +49,13 @@ export async function retryResearch(page: Page) {
 
 type Watch = { cards: string[]; versions: number[]; violations: string[] }
 
-/** Watches every frame from now on, in page coordinates (the page scrolls). The agent cards may move only in a frame where the result block appears
- * or is replaced by a newer result (its `data-version` changes); any other card move, and a result block that
- * goes away once shown, is a violation. */
-/** Starts a per-frame watch of the agent cards. With `traceOf` (a card's test id whose trace the user opened),
- * cards below that card may move in a frame where its trace grew and was still under its 400px cap. */
+/** Watches every frame from now on, in page coordinates (the page scrolls).
+ * - The agent cards and the panel may move only in a frame where the result block appears or is replaced (its
+ *   `data-version` changes); a result block that goes away once shown is a violation.
+ * - With `traceOf` (a card's test id whose trace the user opened), cards below that card may also move in a frame
+ *   where its trace grew or shrank (new steps, the Working row coming or going; the trace is capped at 400px).
+ * - The panel's height and its footer's top may change only within 600ms of the user's own input, when the result
+ *   moves the panel, or when a decision opens in the empty panel. */
 export async function watchLayout(page: Page, traceOf?: string) {
   await page.evaluate((traceOf) => {
     const watch: Watch = { cards: [], versions: [], violations: [] }
@@ -62,6 +64,12 @@ export async function watchLayout(page: Page, traceOf?: string) {
     let ids: string[] = []
     let version: number | null = null
     let traceHeight: number | null = null
+    let panelBox: string | null = null
+    let wasEmpty = false
+    let lastInput = -Infinity
+    const input = () => (lastInput = performance.now())
+    document.addEventListener('pointerdown', input, true)
+    document.addEventListener('keydown', input, true)
     const tick = () => {
       const block = document.querySelector<HTMLElement>('[aria-label="Result"]')
       const now = block ? Number(block.dataset.version) : 0
@@ -71,27 +79,39 @@ export async function watchLayout(page: Page, traceOf?: string) {
       const at = [...cards, ...(panel ? [panel] : [])].map((el) => el.getBoundingClientRect().top + window.scrollY)
       const trace = traceOf ? document.querySelector<HTMLElement>(`[data-testid="${traceOf}"] [data-testid="agent-trace"]`) : null
       const height = trace ? trace.getBoundingClientRect().height : null
+      const footer = panel?.querySelector<HTMLElement>('[data-testid="panel-footer"]')
+      const box = panel
+        ? `h=${panel.getBoundingClientRect().height} footer=${footer ? footer.getBoundingClientRect().top - panel.getBoundingClientRect().top : 'none'}`
+        : null
+      const empty = panel?.textContent?.includes('Nothing needs you right now') ?? false
       watch.cards = cards.map((el) => el.dataset.testid!)
       const labels = [...watch.cards, ...(panel ? ['panel'] : [])]
+      const byUser = performance.now() - lastInput < 600
       if (version === null) {
         // first frame: the starting point
       } else if (now !== version) {
         if (now === 0) watch.violations.push(`result block removed after version ${version}`)
         else watch.versions.push(now)
-      } else if (tops.length && at.some((top, i) => top !== tops[i])) {
-        const grew = height !== null && traceHeight !== null && height > traceHeight && traceHeight < 400
-        const below = cards.findIndex((el) => el.dataset.testid === traceOf)
-        // The panel (last entry) never moves with a trace: only cards below the traced one do.
-        const allowed = grew && at.every((top, i) => top === tops[i] || (i > below && i < cards.length))
-        if (!allowed) {
-          const line = (list: number[]) => list.map((top, i) => `${ids[i]}@${top}`).join(' ')
-          watch.violations.push(`cards moved: ${line(tops)} -> ${line(at)} (trace ${traceHeight} -> ${height})`)
+      } else {
+        if (tops.length && at.some((top, i) => top !== tops[i])) {
+          const changed = height !== null && traceHeight !== null && height !== traceHeight
+          const below = cards.findIndex((el) => el.dataset.testid === traceOf)
+          // The panel (last entry) never moves with a trace: only cards below the traced one do.
+          const allowed = changed && at.every((top, i) => top === tops[i] || (i > below && i < cards.length))
+          if (!allowed) {
+            const line = (list: number[]) => list.map((top, i) => `${ids[i]}@${top}`).join(' ')
+            watch.violations.push(`cards moved: ${line(tops)} -> ${line(at)} (trace ${traceHeight} -> ${height})`)
+          }
         }
+        if (panelBox !== null && box !== panelBox && !byUser && !wasEmpty)
+          watch.violations.push(`panel resized or its footer moved without the user: ${panelBox} -> ${box}`)
       }
       tops = at
       ids = labels
       version = now
       traceHeight = height
+      panelBox = box
+      wasEmpty = empty
       requestAnimationFrame(tick)
     }
     tick()

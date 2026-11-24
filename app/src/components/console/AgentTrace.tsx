@@ -43,11 +43,16 @@ export function AgentTrace({ agent }: { agent: AgentModel }) {
   const box = useRef<HTMLDivElement>(null)
   const atBottom = useRef(true)
   const rowCount = attempts.reduce((n, attempt) => n + attempt.rows.length, 0)
+  const status = agent.status
+  const last = attempts[attempts.length - 1]
+  const working =
+    agent.tag === 'running' && status !== null && status.seq > (agent.gate?.event.seq ?? 0) && last.rows.some((row) => row.kind === 'step')
 
+  // The Working row counts too: a user at the bottom stays there when it appears or goes.
   useLayoutEffect(() => {
     const el = box.current
     if (el && atBottom.current) el.scrollTop = el.scrollHeight
-  }, [rowCount])
+  }, [rowCount, working])
 
   if (agent.steps.length === 0 && attempts.every((attempt) => attempt.rows.length === 0)) {
     return (
@@ -58,11 +63,6 @@ export function AgentTrace({ agent }: { agent: AgentModel }) {
       </div>
     )
   }
-
-  const status = agent.status
-  const last = attempts[attempts.length - 1]
-  const working =
-    agent.tag === 'running' && status !== null && status.seq > (agent.gate?.event.seq ?? 0) && last.rows.some((row) => row.kind === 'step')
 
   // Steps are stored in seq order, so a step's number is its place in that list, across attempts.
   const numberOf = new Map(agent.steps.map((step, i) => [step.seq, i + 1]))

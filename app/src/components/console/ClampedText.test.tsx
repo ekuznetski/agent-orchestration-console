@@ -4,6 +4,8 @@ import { ClampedText } from './ClampedText'
 
 const long = 'x'.repeat(500)
 
+// Checks the classes and the tooltip only: jsdom has no layout. Real truncation and overflow are checked by the
+// long-text e2e test (a 200-character label and a 500-character unbroken answer).
 describe('ClampedText', () => {
   it('one line: truncates, breaks unbroken strings, full text in the tooltip', () => {
     render(<ClampedText text={long} lines={1} data-testid="t" />)

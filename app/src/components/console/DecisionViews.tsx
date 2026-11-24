@@ -57,7 +57,11 @@ export function Frame({
       </div>
       {children && <div className="flex flex-col gap-3 p-4 text-sm">{children}</div>}
       {/* The footer sits at the bottom of the panel card, whatever the body's height. */}
-      {footer && <div className="mt-auto flex flex-col items-stretch gap-2.5 border-t px-4 py-3">{footer}</div>}
+      {footer && (
+        <div data-testid="panel-footer" className="mt-auto flex flex-col items-stretch gap-2.5 border-t px-4 py-3">
+          {footer}
+        </div>
+      )}
     </div>
   )
 }
@@ -118,6 +122,8 @@ function Editor({
   const draft = entry?.draft ?? gate.draft
   const change = (key: 'subject' | 'body', value: string) => setEdit(agent.id, { draft: { ...draft, [key]: value } })
   const empty = (draft.subject !== undefined && draft.subject.trim() === '') || (draft.body !== undefined && draft.body.trim() === '')
+  // Saving an unchanged draft would only re-ask the same question: Save waits for a real change.
+  const unchanged = draft.subject === gate.draft.subject && draft.body === gate.draft.body
   const subjectRef = useRef<HTMLInputElement>(null)
   const bodyRef = useRef<HTMLTextAreaElement>(null)
 
@@ -138,7 +144,7 @@ function Editor({
       footer={
         <>
           <div className="flex gap-2">
-            <Button size="lg" onClick={save} disabled={empty}>
+            <Button size="lg" onClick={save} disabled={empty || unchanged}>
               Save changes
             </Button>
             <Button size="lg" variant="outline" onClick={onCancel}>
@@ -214,10 +220,24 @@ export function ConfirmationDecision({ agent, gate, refused, act }: { agent: Age
       footer={
         <>
           <div className="flex gap-2">
-            <Button size="lg" onClick={() => act(agent.id, () => approve(agent.id), { kind: 'approve' })}>
+            {/* Approve and Edit ignore the second click of a double click (detail > 1): the edited confirmation
+                can open where Save was, and a double click on Save must not approve it. */}
+            <Button
+              size="lg"
+              onClick={(e) => {
+                if (e.detail <= 1) act(agent.id, () => approve(agent.id), { kind: 'approve' })
+              }}
+            >
               {labels.approve}
             </Button>
-            <Button size="lg" ref={editRef} variant="outline" onClick={() => setEdit(agent.id, { draft: event.draft })}>
+            <Button
+              size="lg"
+              ref={editRef}
+              variant="outline"
+              onClick={(e) => {
+                if (e.detail <= 1) setEdit(agent.id, { draft: event.draft })
+              }}
+            >
               {labels.edit}
             </Button>
           </div>
@@ -226,7 +246,11 @@ export function ConfirmationDecision({ agent, gate, refused, act }: { agent: Age
         </>
       }
     >
-      {gate.revision > 1 && <span className="bg-muted w-fit rounded-sm border px-1.5 text-xs font-semibold">Edited version</span>}
+      {gate.revision > 1 && (
+        <span className="border-primary text-primary inline-flex h-[22px] w-fit items-center rounded-sm border px-1.5 py-0.5 text-xs font-semibold">
+          Edited version
+        </span>
+      )}
       <DraftFields target={event.target} targetLabel={labels.targetLabel} draft={event.draft} />
     </Frame>
   )
@@ -328,7 +352,7 @@ export function FailureDecision({ agent }: { agent: AgentModel }) {
           </Row>
         )}
       </Fields>
-      <p>
+      <p className="text-muted-foreground">
         The {steps} {steps === 1 ? 'step' : 'steps'} of attempt {attempt.n} {steps === 1 ? 'stays' : 'stay'} in its trace. Retry starts
         attempt {attempt.n + 1}.
       </p>

@@ -32,11 +32,14 @@ export function AgentCard({ id }: { id: string }) {
   const line = statusLineOf(agent) ?? TAGS[agent.tag].label
   const foot = inQueue ? (agent.tag === 'failed' ? 'Retry in the panel' : 'Decision in the panel') : 'Details in the panel'
   const linkButton =
-    'text-foreground decoration-input hover:decoration-foreground inline-flex h-[19px] items-center gap-0.5 text-label underline underline-offset-[3px]'
+    'text-foreground decoration-input hover:decoration-foreground inline-flex h-[19px] items-center gap-0.5 text-label font-medium underline underline-offset-[3px]'
 
   return (
     <div
       data-testid={`agent-card-${id}`}
+      // Named by its title, so its buttons ("Show steps", "Details in the panel") are told apart per agent.
+      role="group"
+      aria-labelledby={`agent-title-${id}`}
       // The whole card is a mouse shortcut; the footer button is the keyboard and screen reader path,
       // so no interactive element is nested inside another.
       onClick={openInPanel}
@@ -47,7 +50,7 @@ export function AgentCard({ id }: { id: string }) {
           bridges the rest of the 24px gap. */}
       {shown && <span aria-hidden="true" className={`absolute top-1/2 -right-3.5 h-[3px] w-3 -translate-y-1/2 ${link}`} />}
       <div className="grid grid-cols-[minmax(0,1fr)_8rem] items-start gap-x-3 gap-y-0.5 px-4 pt-3 pb-2">
-        <ClampedText text={agent.label} lines={1} className="text-title font-semibold" />
+        <ClampedText id={`agent-title-${id}`} text={agent.label} lines={1} className="text-title font-semibold" />
         <div className="row-span-2 justify-self-end">
           <StatusBadge tag={agent.tag} waiting={waiting} testId="agent-badge" />
         </div>
