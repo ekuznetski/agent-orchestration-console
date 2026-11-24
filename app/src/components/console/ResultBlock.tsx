@@ -14,17 +14,20 @@ export function ResultBlock() {
   if (!result) return null
   const retryable = (agentId: string) => queue.includes(agentId) && agents[agentId].tag === 'failed'
   // Retried and not failed again: the row keeps its place with "Retrying..." until a newer result replaces it.
-  const retrying = (agentId: string) => agents[agentId].actions.at(-1)?.kind === 'retry' && !retryable(agentId)
+  // After a cancel nothing runs, so nothing is retrying.
+  const retrying = (agentId: string) => !cancelled && agents[agentId].actions.at(-1)?.kind === 'retry' && !retryable(agentId)
   const errors = result.event.items.filter((item) => item.kind === 'error')
   const canRetry = errors.some((item) => retryable(item.agentId))
   const anyRetrying = errors.some((item) => retrying(item.agentId))
 
   const degraded = isDegraded(result.event)
-  const head = result.outdated ? 'Updating' : degraded ? 'Partial result' : 'Complete'
-  const headColor = !result.outdated && degraded ? 'var(--tone-danger)' : undefined
+  // A cancelled run will not update the result: it keeps its own heading, not "Updating".
+  const updating = result.outdated && !cancelled
+  const head = updating ? 'Updating' : degraded ? 'Partial result' : 'Complete'
+  const headColor = !updating && degraded ? 'var(--tone-danger)' : undefined
 
   return (
-    <section aria-label="Result" className="bg-muted flex flex-col gap-2 rounded-md border p-3">
+    <section aria-label="Result" data-version={result.version} className="bg-muted flex flex-col gap-2 rounded-md border p-3">
       <h2 className="text-base font-bold" style={{ color: headColor }}>
         {head}
       </h2>
@@ -34,7 +37,7 @@ export function ResultBlock() {
           {canRetry ? 'An agent failed. Retry it to update this result.' : 'Retrying... This result updates when the agent finishes.'}
         </p>
       )}
-      <div className={result.outdated ? 'flex flex-col gap-2 opacity-50' : 'flex flex-col gap-2'}>
+      <div className={updating ? 'flex flex-col gap-2 opacity-50' : 'flex flex-col gap-2'}>
         <p>{result.event.summary}</p>
         {result.event.items.map((item) => (
           <div key={item.id} className="grid grid-cols-[7rem_minmax(0,1fr)] gap-2 border-t pt-1.5">

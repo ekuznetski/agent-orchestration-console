@@ -1,5 +1,16 @@
-/// <reference lib="dom" />
-import { answerScheduling, approveDrafting, badge, card, expect, panel, retryResearch, startRun, test } from './fixtures.ts'
+import {
+  answerScheduling,
+  approveDrafting,
+  badge,
+  card,
+  expect,
+  layoutWatch,
+  panel,
+  retryResearch,
+  startRun,
+  test,
+  watchLayout,
+} from './fixtures.ts'
 
 // Each test is one item of the task's Definition of done, against the real app and the real mock at 4x.
 // Every wait is on UI state; there are no sleeps.
@@ -52,6 +63,9 @@ test('4. a confirmation does not fire until approved; Edit forces a fresh approv
   await expect(badge(page, 'drafting')).toHaveText('Needs approval', { timeout: 60_000 })
   await drafting.getByRole('button', { name: 'Decision in the panel' }).click()
   await expect(panel(page).getByText('Send this email?')).toBeVisible()
+  // Before an irreversible action the whole draft is on screen: the body box does not clip it.
+  const body = panel(page).getByText(/^Hi Maya,/)
+  expect(await body.evaluate((el) => el.scrollHeight <= el.clientHeight)).toBe(true)
   // Not sent while waiting: let the other agents go on until they too wait for the user, then check again.
   await expect(badge(page, 'research')).toHaveText('Failed', { timeout: 60_000 })
   await expect(badge(page, 'scheduling')).toHaveText('Needs answer', { timeout: 60_000 })
@@ -73,6 +87,7 @@ test('4. a confirmation does not fire until approved; Edit forces a fresh approv
   await expect(panel(page).getByText('Agent record')).toBeVisible()
   const approved = panel(page).getByText('You approved (revision 2)').locator('xpath=..')
   await expect(approved).toContainText('Edited in the e2e test')
+  expect(await approved.getByText(/^Hi Maya,/).evaluate((el) => el.scrollHeight <= el.clientHeight)).toBe(true)
 })
 
 test('5. an escalation pauses only its own agent; an answer resumes it', async ({ page, jitter }) => {
@@ -113,13 +128,30 @@ test('a partial result is retried from its error item and becomes Complete', asy
   await answerScheduling(page)
   const result = page.getByRole('region', { name: 'Result' })
   await expect(result.getByRole('heading', { name: 'Partial result' })).toBeVisible()
-  const before = await card(page, 'research').boundingBox()
+  // The cards may move only when the newer result replaces this one; the block itself never goes away.
+  await watchLayout(page)
   await result.getByRole('button', { name: 'Retry agent' }).click()
   await expect(result.getByText('Retrying...', { exact: true })).toBeVisible()
-  expect(await card(page, 'research').boundingBox()).toEqual(before)
   await expect(result.getByRole('heading', { name: 'Updating' })).toBeVisible()
-  expect(await card(page, 'research').boundingBox()).toEqual(before)
   await expect(result.getByRole('heading', { name: 'Complete' })).toBeVisible()
+  const watch = await layoutWatch(page)
+  expect(watch.versions).toEqual([2])
+  expect(watch.violations).toEqual([])
+})
+
+test('Cancel during a retry of a partial result keeps the partial result as it was', async ({ page, jitter }) => {
+  await startRun(page, jitter)
+  await expect(badge(page, 'research')).toHaveText('Failed')
+  await approveDrafting(page)
+  await answerScheduling(page)
+  const result = page.getByRole('region', { name: 'Result' })
+  await expect(result.getByRole('heading', { name: 'Partial result' })).toBeVisible()
+  await result.getByRole('button', { name: 'Retry agent' }).click()
+  await expect(result.getByText('Retrying...', { exact: true })).toBeVisible()
+  await page.getByRole('button', { name: 'Cancel run' }).click()
+  await expect(result.getByRole('heading', { name: 'Partial result' })).toBeVisible()
+  await expect(result.getByText('From before the run was cancelled.')).toBeVisible()
+  await expect(result.getByText(/Retrying/)).toHaveCount(0)
 })
 
 test('Cancel run keeps the screen; Run again starts a fresh run', async ({ page, jitter }) => {
@@ -147,37 +179,23 @@ test('the open event log keeps its height and its toggle its place while events 
   await expect(page.getByRole('region', { name: 'Result' }).getByRole('heading', { name: 'Complete' })).toBeVisible()
   expect(await log.boundingBox()).toEqual(first)
   expect((await toggle.boundingBox())!.x).toBe(toggleX)
+
+  // A long payload truncates instead of widening the table, also in a narrow window.
+  await page.setViewportSize({ width: 800, height: 900 })
+  const widths = await page.locator('table').evaluate((table) => ({ table: table.scrollWidth, box: table.parentElement!.clientWidth }))
+  expect(widths.table).toBeLessThanOrEqual(widths.box)
 })
 
 test('agent cards keep their position while decisions open and close', async ({ page, jitter }) => {
   await startRun(page, jitter)
-  // Every frame until the result arrives (the one allowed shift), record any card that moved.
-  await page.evaluate(() => {
-    const seen: Record<string, string> = {}
-    const moves: string[] = []
-    ;(window as unknown as { moves: string[]; seen: object }).moves = moves
-    ;(window as unknown as { moves: string[]; seen: object }).seen = seen
-    const tick = () => {
-      if (document.querySelector('[aria-label="Result"]')) return
-      document.querySelectorAll<HTMLElement>('[data-testid^="agent-card-"]').forEach((el) => {
-        const box = el.getBoundingClientRect()
-        const at = `${box.top},${box.height}`
-        const id = el.dataset.testid!
-        if (!(id in seen)) seen[id] = at
-        else if (seen[id] !== at) moves.push(`${id}: ${seen[id]} -> ${at}`)
-      })
-      requestAnimationFrame(tick)
-    }
-    tick()
-  })
+  // Every frame: the cards may move only when the result block first appears.
+  await watchLayout(page)
   await retryResearch(page)
   await approveDrafting(page)
   await answerScheduling(page)
-  await expect(page.getByRole('region', { name: 'Result' })).toBeVisible()
-  const watched = await page.evaluate(() => {
-    const { moves, seen } = window as unknown as { moves: string[]; seen: object }
-    return { moves, seen }
-  })
-  expect(Object.keys(watched.seen)).toHaveLength(3)
-  expect(watched.moves).toEqual([])
+  await expect(page.getByRole('region', { name: 'Result' }).getByRole('heading', { name: 'Complete' })).toBeVisible()
+  const watch = await layoutWatch(page)
+  expect(watch.cards).toHaveLength(3)
+  expect(watch.versions).toEqual([1])
+  expect(watch.violations).toEqual([])
 })

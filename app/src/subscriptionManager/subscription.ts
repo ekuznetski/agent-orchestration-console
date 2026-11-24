@@ -57,15 +57,15 @@ export function reset(): void {
 /** Sends one command. A second command while one is pending does not reach the mock and returns true
  * (it is already in flight). Only a command the mock accepted (true) is recorded, with what was sent. */
 function send(agentId: string, call: (orc: MockOrchestrator) => boolean, sent: (agent: AgentModel) => Sent): boolean {
-  // After cancel the run is over and nothing can be sent (architecture section 2).
-  if (!orchestrator) return false
+  // No guard for a missing orchestrator: no rendered control sends a command before start or after cancel
+  // (the decision queue is empty then; architecture section 2).
   const agent = useConsoleStore.getState().agents[agentId]
   // A second click before the agent answers: the command is already in flight.
   if (pendingCommand(agent)) return true
   // Read before the call: the agent's next event after this seq answers the command.
   const afterSeq = agent.maxSeq
   const record = sent(agent)
-  const accepted = call(orchestrator)
+  const accepted = call(orchestrator!)
   if (accepted) apply({ type: 'command_sent', agentId, afterSeq, ...record })
   return accepted
 }

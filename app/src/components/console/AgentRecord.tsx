@@ -30,15 +30,17 @@ function ActionEntry({ action }: { action: Action }) {
           </Row>
         ))}
       </div>
-      {body !== undefined && <div className="bg-muted max-h-[220px] overflow-auto rounded-sm border p-2 whitespace-pre-wrap">{body}</div>}
+      {body !== undefined && <div className="bg-muted rounded-sm border p-2 break-words whitespace-pre-wrap">{body}</div>}
     </div>
   )
 }
 
-/** What one agent did and what the user sent it. The trace stays in the card. */
+/** What one agent did and what the user sent it. The trace stays in the card. Sections that arrive later (the
+ * result) go below what the user did, so their arrival does not move what is already on screen. */
 export function AgentRecord({ id }: { id: string }) {
   const agent = useAgent(id)
   const result = useConsoleStore((state) => state.result)
+  const cancelled = useConsoleStore((state) => state.status === 'cancelled')
   const tag = TAGS[agent.tag]
   const items = result ? result.event.items.filter((item) => item.agentId === id) : []
 
@@ -55,13 +57,24 @@ export function AgentRecord({ id }: { id: string }) {
           {tag.label}
         </span>
       </div>
+      {/* One truncated line: a longer status must not push down what the user is reading. */}
       <div className="grid grid-cols-[5rem_minmax(0,1fr)] gap-x-2.5">
-        <Row label="Status">{statusLineOf(agent) ?? 'No status yet'}</Row>
+        <span className="text-muted-foreground">Status</span>
+        <span className="truncate" title={statusLineOf(agent) ?? undefined}>
+          {statusLineOf(agent) ?? 'No status yet'}
+        </span>
       </div>
+      <section aria-label="What you did" className="flex flex-col gap-2.5 border-t pt-2">
+        {agent.actions.length === 0 ? (
+          <p className="text-muted-foreground">You have not acted on this agent.</p>
+        ) : (
+          agent.actions.map((action, i) => <ActionEntry key={i} action={action} />)
+        )}
+      </section>
       {items.length > 0 && result && (
         <section aria-label="Result for this agent" className="flex flex-col gap-1.5 border-t pt-2">
-          <b>Result{result.outdated ? ' - Updating' : ''}</b>
-          <div className={result.outdated ? 'flex flex-col gap-1.5 opacity-50' : 'flex flex-col gap-1.5'}>
+          <b>Result{result.outdated && !cancelled ? ' - Updating' : ''}</b>
+          <div className={result.outdated && !cancelled ? 'flex flex-col gap-1.5 opacity-50' : 'flex flex-col gap-1.5'}>
             {items.map((item) => (
               <div key={item.id} className="flex flex-col gap-0.5">
                 <span
@@ -77,13 +90,6 @@ export function AgentRecord({ id }: { id: string }) {
           </div>
         </section>
       )}
-      <section aria-label="What you did" className="flex flex-col gap-2.5 border-t pt-2">
-        {agent.actions.length === 0 ? (
-          <p className="text-muted-foreground">You have not acted on this agent.</p>
-        ) : (
-          agent.actions.map((action, i) => <ActionEntry key={i} action={action} />)
-        )}
-      </section>
     </div>
   )
 }

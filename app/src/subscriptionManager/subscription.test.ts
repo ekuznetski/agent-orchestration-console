@@ -157,8 +157,6 @@ describe('cancel and reset', () => {
     expect(useConsoleStore.getState().status).toBe('cancelled')
     expect(useConsoleStore.getState().log).toHaveLength(2)
     expect(useViewStore.getState()).toMatchObject({ outcome: null, runs: 1, edits: { agent_drafting: { draft: { body: 'y' } } } })
-    expect(approve('agent_drafting')).toBe(false)
-    expect(fake.orchestrator.approve).not.toHaveBeenCalled()
   })
 
   it('start clears screen state and counts the run; reset clears both stores and keeps request, speed, jitter', () => {

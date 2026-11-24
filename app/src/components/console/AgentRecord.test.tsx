@@ -89,6 +89,24 @@ describe('agent record', () => {
     expect(panel().getByText('Body text')).toBeTruthy()
   })
 
+  it('puts the result that arrives later below what the user did', () => {
+    setup()
+    openCard('drafting')
+    click('Approve and send')
+    status('drafting', 'done')
+    openCard('drafting')
+    const did = panel().getByRole('region', { name: 'What you did' })
+    emit({
+      type: 'result',
+      seq: next(),
+      summary: 'Partial',
+      degraded: true,
+      items: [{ id: 'm', agentId: 'drafting', kind: 'email_sent', title: 'Mail sent', detail: 'to Maya' }],
+    })
+    const result = panel().getByRole('region', { name: 'Result for this agent' })
+    expect(did.compareDocumentPosition(result) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
   it('stays open when a decision arrives, and the waiting count grows', () => {
     setup({ waiting: false })
     openCard('drafting')
@@ -117,6 +135,15 @@ describe('agent record', () => {
     status('drafting', 'done')
     openCard('drafting')
     expect(panel().getByText('You have not acted on this agent.')).toBeTruthy()
+  })
+})
+
+describe('back to decisions', () => {
+  it('shows no count when nothing waits', () => {
+    setup({ waiting: false })
+    status('research', 'running', { attempt: 2 })
+    openCard('research')
+    expect(panel().getByRole('button', { name: 'Back to decisions' })).toBeTruthy()
   })
 })
 

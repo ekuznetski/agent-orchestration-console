@@ -108,9 +108,9 @@ describe('approve', () => {
     click('Approve and send')
     expect(outcome().textContent).toBe('ApprovedWaiting for the agent to respond.')
     step('drafting')
-    expect(outcome().textContent).toBe('ApprovedNow: Running - drafting step')
+    expect(outcome().textContent).toBe('Approveddrafting step')
     status('drafting', 'done')
-    expect(outcome().textContent).toBe('ApprovedNow: Done - drafting done')
+    expect(outcome().textContent).toBe('Approveddrafting done')
   })
 
   it('a card click on an agent whose command is pending opens its record, not its decision', () => {
@@ -201,7 +201,7 @@ describe('retry', () => {
     expect(fakeOrchestrator.retry).toHaveBeenCalledWith('research')
     expect(outcome().textContent).toBe('Retry sent: attempt 2Waiting for the agent to respond.')
     status('research', 'running', { attempt: 2 })
-    expect(outcome().textContent).toBe('Retry sent: attempt 2Now: Running - research running')
+    expect(outcome().textContent).toBe('Retry sent: attempt 2research running')
   })
 
   it('retries from the error item of a partial result', () => {
@@ -281,6 +281,14 @@ describe('focus', () => {
     expect(document.activeElement).toBe(panel().getByLabelText('Subject'))
     click('Save changes')
     expect(document.activeElement).toBe(panel().getByRole('button', { name: 'Next decision: Research' }))
+  })
+
+  it('returns to the Edit button after Cancel edit', () => {
+    setup()
+    openCard('drafting')
+    click('Edit email')
+    click('Cancel edit')
+    expect(document.activeElement).toBe(panel().getByRole('button', { name: 'Edit email' }))
   })
 
   it('moves to the outcome after approve when nothing else waits', () => {

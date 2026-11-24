@@ -65,6 +65,10 @@ describe('cancel and run again', () => {
     expect(panel().getByText('The run was cancelled.')).toBeTruthy()
     expect(screen.getByTestId('run-summary').textContent).toContain('Run cancelled')
     expect(screen.getByRole('button', { name: 'Run again' })).toBeTruthy()
+    // No control that sends a command is left, so the manager needs no guard for a missing orchestrator.
+    expect(screen.queryByRole('button', { name: /^(Approve|Edit|Send answer|Retry)/ })).toBeNull()
+    fireEvent.click(screen.getByTestId('agent-card-drafting'))
+    expect(screen.queryByRole('button', { name: /^(Approve|Edit|Send answer|Retry)/ })).toBeNull()
   })
 
   it('keeps an open agent record when the run is cancelled', () => {
@@ -131,5 +135,38 @@ describe('cancel and run again', () => {
   it('the console has one h1', () => {
     setup()
     expect(screen.getAllByRole('heading', { level: 1 }).map((h) => h.textContent)).toEqual(['Agent orchestration console'])
+  })
+
+  it('Cancel during a retry after a partial result: the result keeps its own heading, no retrying note or row', () => {
+    setup()
+    emit({
+      type: 'agent_status',
+      seq: 6,
+      agentId: 'research',
+      state: 'failed',
+      statusLine: 'Failed',
+      error: { code: 'x', message: 'm', retryable: true },
+    })
+    emit({ type: 'agent_status', seq: 7, agentId: 'drafting', state: 'done', statusLine: 'Sent' })
+    emit({ type: 'agent_status', seq: 8, agentId: 'scheduling', state: 'done', statusLine: 'Held' })
+    emit({
+      type: 'result',
+      seq: 9,
+      summary: 'Partial',
+      degraded: true,
+      items: [{ id: 'e', agentId: 'research', kind: 'error', title: 'Research failed', detail: 'jira timed out' }],
+    })
+    const result = within(screen.getByRole('region', { name: 'Result' }))
+    fireEvent.click(result.getByRole('button', { name: 'Retry agent' }))
+    emit({ type: 'agent_status', seq: 10, agentId: 'research', state: 'running', statusLine: 'Retrying', attempt: 2 })
+    expect(result.getByText('Updating')).toBeTruthy()
+    expect(result.getByText('Retrying...')).toBeTruthy()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel run' }))
+    expect(result.getByRole('heading', { name: 'Partial result' })).toBeTruthy()
+    expect(result.getByText('From before the run was cancelled.')).toBeTruthy()
+    expect(result.queryByText('Updating')).toBeNull()
+    expect(result.queryByText(/Retrying/)).toBeNull()
+    expect(result.queryByRole('button', { name: 'Retry agent' })).toBeNull()
   })
 })

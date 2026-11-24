@@ -1,3 +1,4 @@
+/// <reference lib="dom" />
 import { test as base, expect, type Page } from '@playwright/test'
 
 export type ConsoleOptions = {
@@ -43,3 +44,41 @@ export async function retryResearch(page: Page) {
   await card(page, 'research').getByRole('button', { name: 'Retry in the panel' }).click()
   await panel(page).getByRole('button', { name: 'Retry', exact: true }).click()
 }
+
+type Watch = { cards: string[]; versions: number[]; violations: string[] }
+
+/** Watches every frame from now on. The agent cards may move only in a frame where the result block appears
+ * or is replaced by a newer result (its `data-version` changes); any other card move, and a result block that
+ * goes away once shown, is a violation. */
+export async function watchLayout(page: Page) {
+  await page.evaluate(() => {
+    const watch: Watch = { cards: [], versions: [], violations: [] }
+    ;(window as unknown as { watch: Watch }).watch = watch
+    let tops = ''
+    let version: number | null = null
+    const tick = () => {
+      const block = document.querySelector<HTMLElement>('[aria-label="Result"]')
+      const now = block ? Number(block.dataset.version) : 0
+      const cards = [...document.querySelectorAll<HTMLElement>('[data-testid^="agent-card-"]')]
+      const at = cards.map((el) => `${el.dataset.testid}@${el.getBoundingClientRect().top}`).join(' ')
+      watch.cards = cards.map((el) => el.dataset.testid!)
+      if (version === null) {
+        // first frame: the starting point
+      } else if (now !== version) {
+        if (now === 0) watch.violations.push(`result block removed after version ${version}`)
+        else watch.versions.push(now)
+      } else if (tops && at !== tops) watch.violations.push(`cards moved: ${tops} -> ${at}`)
+      tops = at
+      version = now
+      requestAnimationFrame(tick)
+    }
+    tick()
+  })
+}
+
+/** What the watch saw, read after two more frames so the frame that shows the latest DOM change is counted. */
+export const layoutWatch = (page: Page) =>
+  page.evaluate(async () => {
+    await new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)))
+    return (window as unknown as { watch: Watch }).watch
+  })

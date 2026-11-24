@@ -46,12 +46,24 @@ function DraftFields({ target, draft }: { target: string; draft: Draft }) {
           </Row>
         ))}
       </div>
-      {body !== undefined && <div className="bg-muted max-h-[220px] overflow-auto rounded-sm border p-2 whitespace-pre-wrap">{body}</div>}
+      {body !== undefined && <div className="bg-muted rounded-sm border p-2 break-words whitespace-pre-wrap">{body}</div>}
     </>
   )
 }
 
-function Editor({ agent, gate, refused, act }: { agent: AgentModel; gate: ConfirmationRequiredEvent; refused: boolean; act: Act }) {
+function Editor({
+  agent,
+  gate,
+  refused,
+  act,
+  onCancel,
+}: {
+  agent: AgentModel
+  gate: ConfirmationRequiredEvent
+  refused: boolean
+  act: Act
+  onCancel: () => void
+}) {
   const labels = actionLabels(gate.action)
   const entry = useViewStore((state) => state.edits[agent.id])
   const setEdit = useViewStore((state) => state.setEdit)
@@ -104,7 +116,7 @@ function Editor({ agent, gate, refused, act }: { agent: AgentModel; gate: Confir
         <Button onClick={save} disabled={empty}>
           Save changes
         </Button>
-        <Button variant="outline" onClick={() => setEdit(agent.id, null)}>
+        <Button variant="outline" onClick={onCancel}>
           Cancel edit
         </Button>
       </div>
@@ -119,8 +131,22 @@ export function ConfirmationDecision({ agent, gate, refused, act }: { agent: Age
   const labels = actionLabels(event.action)
   const entry = useViewStore((state) => state.edits[agent.id])
   const setEdit = useViewStore((state) => state.setEdit)
+  const editRef = useRef<HTMLButtonElement>(null)
+  const focusEdit = useRef(false)
 
-  if (entry) return <Editor agent={agent} gate={event} refused={refused} act={act} />
+  // Cancel edit removed the focused button; give focus back to Edit once the view is back.
+  useEffect(() => {
+    if (!focusEdit.current || !editRef.current) return
+    focusEdit.current = false
+    editRef.current.focus()
+  })
+
+  const cancelEdit = () => {
+    focusEdit.current = true
+    setEdit(agent.id, null)
+  }
+
+  if (entry) return <Editor agent={agent} gate={event} refused={refused} act={act} onCancel={cancelEdit} />
 
   return (
     <div className="flex flex-col gap-2.5">
@@ -131,7 +157,7 @@ export function ConfirmationDecision({ agent, gate, refused, act }: { agent: Age
       <DraftFields target={event.target} draft={event.draft} />
       <div className="flex gap-2">
         <Button onClick={() => act(agent.id, () => approve(agent.id), { kind: 'approve' })}>{labels.approve}</Button>
-        <Button variant="outline" onClick={() => setEdit(agent.id, { draft: event.draft })}>
+        <Button ref={editRef} variant="outline" onClick={() => setEdit(agent.id, { draft: event.draft })}>
           {labels.edit}
         </Button>
       </div>

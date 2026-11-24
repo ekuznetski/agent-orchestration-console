@@ -36,10 +36,10 @@ function sentLine(outcome: Outcome): string {
   return `Retry sent: attempt ${outcome.attempt}`
 }
 
-/** Where the agent is now, from the model. */
+/** Where the agent is now, from the model: its status line, verbatim. */
 function nowLine(agent: AgentModel): string {
   if (pendingCommand(agent)) return 'Waiting for the agent to respond.'
-  return `Now: ${TAGS[agent.tag].label} - ${statusLineOf(agent) ?? ''}`
+  return statusLineOf(agent) ?? ''
 }
 
 /** The outcome of the user's last action, and the way to the next decision. Nothing here moves by itself:
@@ -153,7 +153,7 @@ export function DecisionPanel() {
               Agent record
             </h2>
             <Button variant="outline" size="sm" onClick={backToDecisions}>
-              Back to decisions ({waitingCount})
+              {waitingCount > 0 ? `Back to decisions (${waitingCount})` : 'Back to decisions'}
             </Button>
           </div>
           <AgentRecord id={recordId} />
