@@ -98,6 +98,12 @@ export function AgentTrace({ agent }: { agent: AgentModel }) {
               Attempt {group.n}
             </div>
           )}
+          {/* The newest attempt before its first step (after a Retry): say so, not a bare heading. */}
+          {groups.length > 1 && group.n === last.n && group.rows.length === 0 && (
+            <p className="text-muted-foreground m-0 px-3 py-2 text-label leading-[19px]">
+              No steps in attempt {group.n} yet. Steps appear here as the agent reports them.
+            </p>
+          )}
           <ol className="m-0 list-none p-0">
             {group.rows.map((row, i) => (
               <TraceRow key={row.key} row={row} up={group.rows[i - 1] ?? null} down={group.rows[i + 1] ?? null} />

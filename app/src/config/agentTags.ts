@@ -33,7 +33,8 @@ export const agentType = (type: string) => AGENT_TYPES[type] ?? { name: 'Agent' 
 
 const ACTS: Record<string, string> = { searched: 'Searched', read: 'Read', decided: 'Decided' }
 
-export const actLabel = (act: string): string => ACTS[act] ?? act
+/** An unknown act is shown with its first letter capitalized, like the known ones ("Reconciled"); display only. */
+export const actLabel = (act: string): string => ACTS[act] ?? act.charAt(0).toUpperCase() + act.slice(1)
 
 type ActionLabels = {
   title: string
@@ -85,10 +86,11 @@ const RESULT_KINDS: Record<string, string> = {
   error: 'Error',
 }
 
-export const resultKindLabel = (kind: string): string => RESULT_KINDS[kind] ?? 'Result'
+/** An unknown result kind is named verbatim, like an unknown action or act. */
+export const resultKindLabel = (kind: string): string => RESULT_KINDS[kind] ?? kind
 
-// `warning` is the sentence under Approve / Edit, `record` the one in the record of an approval; an unknown class
-// shows "label: note" in both.
+// `warning` is the sentence under Approve / Edit, `record` the one in the record of an approval. An unknown class
+// gets its own warning and record text from effectClassLabel's fallback, naming the class.
 const EFFECT_CLASSES: Record<string, { label: string; note: string; tone: Tone; warning?: string; record?: string }> = {
   irreversible: {
     label: 'Irreversible',
@@ -113,11 +115,13 @@ const EFFECT_CLASSES: Record<string, { label: string; note: string; tone: Tone; 
   },
 }
 
+/** An unknown effect class (outside today's contract, which lists three) is named verbatim and treated as the worst
+ * case, in the danger tone; it never borrows the irreversible wording, since the console does not know that. */
 export const effectClassLabel = (effectClass: string) =>
   EFFECT_CLASSES[effectClass] ?? {
-    label: 'Side effect',
-    note: 'the agent acts on your behalf',
-    tone: 'attention' as Tone,
-    warning: undefined,
-    record: undefined,
+    label: 'Unknown effect',
+    note: `"${effectClass}"`,
+    tone: 'danger' as Tone,
+    warning: `Unknown effect "${effectClass}". Assume it cannot be undone`,
+    record: `Effect "${effectClass}", unknown to this console`,
   }

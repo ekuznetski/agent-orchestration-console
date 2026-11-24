@@ -3,7 +3,7 @@ import type { ResultEvent } from '@mock/orchestrator.js'
 import { Badge } from '@/components/ui/badge'
 import { resultKindLabel } from '@/config/agentTags'
 import { useConsoleStore } from '@/store/console.store'
-import { canRetryFromResult, isDegraded, isRetryingFromResult } from '@/store/selectors'
+import { canRetryFromResult, isDegraded, isRetryingFromResult, phaseOf, retriedFromResult } from '@/store/selectors'
 import { useViewStore } from '@/store/view.store'
 import { RetryButton } from './RetryButton'
 import { ClampedText } from './ClampedText'
@@ -14,6 +14,11 @@ export function ResultBlock() {
   const result = useConsoleStore((state) => state.result)
   const cancelled = useConsoleStore((state) => state.status === 'cancelled')
   const total = useConsoleStore((state) => state.plan?.order.length ?? 0)
+  // The result is final only once every agent has settled (done or failed).
+  const allSettled = useConsoleStore((state) => state.status === 'settled')
+  // One rule with the top bar: the result is final only when the run's phase is completed or partial (a Retry the
+  // mock accepted makes the phase running at once, before the agent's next event).
+  const phase = useConsoleStore(phaseOf)
   // Primitives only, so an event for an agent outside the error items does not re-render the block.
   const canRetry = useConsoleStore((state) =>
     (state.result?.event.items ?? []).some((item) => item.kind === 'error' && canRetryFromResult(state, item.agentId)),
@@ -31,7 +36,8 @@ export function ResultBlock() {
 
   const degraded = isDegraded(result.event)
   // A cancelled run will not update the result: it keeps its own heading, not "Updating".
-  const updating = result.outdated && !cancelled
+  // Also while an agent still runs: a result can arrive before the last Done (delivery order wobbles).
+  const updating = phase !== 'completed' && phase !== 'partial' && !cancelled
   const head = cancelled ? 'Run cancelled' : updating ? 'Updating' : degraded ? 'Partial result' : 'Complete'
   const look = cancelled
     ? { band: 'bg-muted border-input', ink: 'text-foreground', Icon: CircleX, icon: 'text-muted-foreground' }
@@ -48,9 +54,14 @@ export function ResultBlock() {
       ? `${failedCount} of ${total} agents failed - retry ${failedCount === 1 ? 'it' : 'them'} to complete the result`
       : retrying
         ? `This result is outdated - ${retrying} is running`
-        : !degraded && !updating
-          ? `All ${total} agents finished${result.version > 1 ? '. Updated after retry.' : ''}`
-          : null
+        : updating
+          ? allSettled
+            ? 'Every agent has finished; collecting the new result. It replaces this one.'
+            : 'An agent is still finishing; this result may still change.'
+          : degraded
+            ? // Nothing to retry (the failure is not retryable): only the count.
+              `${failedCount} of ${total} agents failed`
+            : `All ${total} agents finished${result.version > 1 ? '. Updated after retry.' : ''}`
 
   return (
     <section
@@ -84,6 +95,7 @@ function ResultItem({ item }: { item: ResultEvent['items'][number] }) {
   const label = useConsoleStore((state) => state.agents[item.agentId].label)
   const retryable = useConsoleStore((state) => item.kind === 'error' && canRetryFromResult(state, item.agentId))
   const retrying = useConsoleStore((state) => item.kind === 'error' && isRetryingFromResult(state, item.agentId))
+  const retried = useConsoleStore((state) => item.kind === 'error' && retriedFromResult(state, item.agentId))
   const openRecord = useViewStore((state) => state.openRecord)
   const error = item.kind === 'error'
   return (
@@ -122,8 +134,8 @@ function ResultItem({ item }: { item: ResultEvent['items'][number] }) {
         </div>
         {/* Retry sits to the right of the error text. The slot has a fixed width, so "Retrying..." taking the
             button's place does not rewrap the text beside it. */}
-        {error && (retryable || retrying) && (
-          <div className="flex w-28 shrink-0 justify-end">
+        {error && (retryable || retried) && (
+          <div className="flex min-h-9 w-28 shrink-0 justify-end">
             {retryable && <RetryButton agentId={item.agentId} label="Retry" />}
             {retrying && <span className="text-muted-foreground flex h-9 items-center text-sm">Retrying...</span>}
           </div>

@@ -67,6 +67,7 @@ export async function watchLayout(page: Page, traceOf?: string) {
     let panelBox: string | null = null
     let wasEmpty = false
     let lastInput = -Infinity
+    let scroll = ''
     const input = () => (lastInput = performance.now())
     document.addEventListener('pointerdown', input, true)
     document.addEventListener('keydown', input, true)
@@ -76,9 +77,16 @@ export async function watchLayout(page: Page, traceOf?: string) {
       const cards = [...document.querySelectorAll<HTMLElement>('[data-testid^="agent-card-"]')]
       // The panel is watched with the cards: the full-width result moves both, and nothing else may.
       const panel = document.querySelector<HTMLElement>('aside')
-      const at = [...cards, ...(panel ? [panel] : [])].map((el) => el.getBoundingClientRect().top + window.scrollY)
+      // Cards in page coordinates; the sticky panel in viewport coordinates (where the user sees it), compared only
+      // in frames without a scroll.
+      const at = [
+        ...cards.map((el) => el.getBoundingClientRect().top + window.scrollY),
+        ...(panel ? [panel.getBoundingClientRect().top] : []),
+      ]
       const trace = traceOf ? document.querySelector<HTMLElement>(`[data-testid="${traceOf}"] [data-testid="agent-trace"]`) : null
       const height = trace ? trace.getBoundingClientRect().height : null
+      // The page and the panel's own scroll box (a panel taller than the window scrolls on its own).
+      const scrollNow = `${window.scrollY} ${panel?.parentElement?.scrollTop ?? 0}`
       const footer = panel?.querySelector<HTMLElement>('[data-testid="panel-footer"]')
       const box = panel
         ? `h=${panel.getBoundingClientRect().height} footer=${footer ? footer.getBoundingClientRect().top - panel.getBoundingClientRect().top : 'none'}`
@@ -93,11 +101,16 @@ export async function watchLayout(page: Page, traceOf?: string) {
         if (now === 0) watch.violations.push(`result block removed after version ${version}`)
         else watch.versions.push(now)
       } else {
-        if (tops.length && at.some((top, i) => top !== tops[i])) {
+        // A scroll of the page or of the panel's box (the user, or focus moving into view after a click) moves the
+        // panel in the viewport.
+        const scrolled = scrollNow !== scroll
+        const panelIndex = panel ? at.length - 1 : -1
+        const moved = (top: number, i: number) => top !== tops[i] && !(scrolled && i === panelIndex)
+        if (tops.length && at.some(moved)) {
           const changed = height !== null && traceHeight !== null && height !== traceHeight
           const below = cards.findIndex((el) => el.dataset.testid === traceOf)
           // The panel (last entry) never moves with a trace: only cards below the traced one do.
-          const allowed = changed && at.every((top, i) => top === tops[i] || (i > below && i < cards.length))
+          const allowed = changed && at.every((top, i) => !moved(top, i) || (i > below && i < cards.length))
           if (!allowed) {
             const line = (list: number[]) => list.map((top, i) => `${ids[i]}@${top}`).join(' ')
             watch.violations.push(`cards moved: ${line(tops)} -> ${line(at)} (trace ${traceHeight} -> ${height})`)
@@ -111,6 +124,7 @@ export async function watchLayout(page: Page, traceOf?: string) {
       version = now
       traceHeight = height
       panelBox = box
+      scroll = scrollNow
       wasEmpty = empty
       requestAnimationFrame(tick)
     }

@@ -78,6 +78,32 @@ describe('agent list', () => {
     expect(within(card('agent_drafting')).getByTestId('agent-status-line').textContent).toBe('Queued')
   })
 
+  it('says the newest attempt has no steps yet, until its first step', () => {
+    render(<AgentList />)
+    const ids = ['research']
+    apply([
+      { type: 'plan', seq: 1, ts: '', runId: 'r', task: 'T', subtasks: ids.map((id) => ({ id, type: 'research', label: 'R' })) },
+      { type: 'agent_status', seq: 2, ts: '', agentId: 'research', state: 'running', statusLine: 'Working' },
+      { type: 'agent_step', seq: 3, ts: '', agentId: 'research', act: 'searched', detail: 'Slack' },
+      {
+        type: 'agent_status',
+        seq: 4,
+        ts: '',
+        agentId: 'research',
+        state: 'failed',
+        statusLine: 'Failed',
+        error: { code: 'x', message: 'm', retryable: true },
+      },
+      { type: 'command_sent', agentId: 'research', kind: 'retry', attempt: 2, afterSeq: 4 },
+      { type: 'agent_status', seq: 5, ts: '', agentId: 'research', state: 'running', statusLine: 'Retrying', attempt: 2 },
+    ] as ConsoleEvent[])
+    fireEvent.click(within(card('research')).getByRole('button', { name: /Show steps/ }))
+    const text = 'No steps in attempt 2 yet. Steps appear here as the agent reports them.'
+    expect(within(card('research')).getByText(text)).toBeTruthy()
+    apply([{ type: 'agent_step', seq: 6, ts: '', agentId: 'research', act: 'searched', detail: 'Jira' }] as unknown as ConsoleEvent[])
+    expect(within(card('research')).queryByText(text)).toBeNull()
+  })
+
   it('shows the empty trace text for an agent without steps', () => {
     render(<AgentList />)
     apply(upTo(1))

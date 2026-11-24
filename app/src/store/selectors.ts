@@ -148,5 +148,11 @@ export function canRetryFromResult(state: RunState, agentId: string): boolean {
 /** The error item's agent was retried and has not failed again: its row reads "Retrying..." until a newer result
  * replaces the block. After a cancel nothing runs, so nothing is retrying. */
 export function isRetryingFromResult(state: RunState, agentId: string): boolean {
-  return state.status !== 'cancelled' && state.agents[agentId].actions.at(-1)?.kind === 'retry' && !canRetryFromResult(state, agentId)
+  return retriedFromResult(state, agentId) && !canRetryFromResult(state, agentId) && state.agents[agentId].status?.state !== 'done'
+}
+
+/** The error item's agent was retried in this run (its last command is a retry): its row keeps the Retry slot,
+ * so the row does not change height when "Retrying..." goes once the agent is done. */
+export function retriedFromResult(state: RunState, agentId: string): boolean {
+  return state.status !== 'cancelled' && state.agents[agentId].actions.at(-1)?.kind === 'retry'
 }

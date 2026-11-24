@@ -184,7 +184,7 @@ describe('edit', () => {
     expect(fakeOrchestrator.approve).toHaveBeenCalledWith('drafting')
   })
 
-  it('words each effect class as a sentence under the buttons; an unknown class as label: note', () => {
+  it('words each effect class as a sentence under the buttons; an unknown class by name, in red', () => {
     setup()
     openCard('drafting')
     expect(panel().getByText('Be careful, this action cannot be undone')).toBeTruthy()
@@ -192,8 +192,11 @@ describe('edit', () => {
     expect(panel().getByText('You can undo this action later')).toBeTruthy()
     confirmation({ effectClass: 'read_only' })
     expect(panel().getByText('This action changes nothing')).toBeTruthy()
+    expect(panel().getByText('This action changes nothing').className).not.toContain('text-failed')
     confirmation({ effectClass: 'billing' })
-    expect(panel().getByText('Side effect: the agent acts on your behalf')).toBeTruthy()
+    const unknown = panel().getByText('Unknown effect "billing". Assume it cannot be undone')
+    expect(unknown.className).toContain('text-failed')
+    expect(panel().queryByText('Be careful, this action cannot be undone')).toBeNull()
   })
 
   it('focus inside the replaced outcome follows to the re-asked confirmation, not to body', () => {
@@ -559,6 +562,66 @@ describe('panel matrix', () => {
     expect(panel().getByText('The agents are done. The result appears at the top.')).toBeTruthy()
     emit({ type: 'result', seq: 3, summary: 'S', items: [] })
     expect(panel().getByText('The run is finished. The result is at the top.')).toBeTruthy()
+  })
+})
+
+describe('result notes', () => {
+  it('a partial result with nothing retryable gives the failed count without a retry hint', () => {
+    setup({ waiting: false })
+    status('research', 'failed', { error: { code: 'x', message: 'gone', retryable: false } })
+    status('drafting', 'done')
+    status('scheduling', 'done')
+    emit({
+      type: 'result',
+      seq: next(),
+      summary: 'Partial',
+      degraded: true,
+      items: [{ id: 'e', agentId: 'research', kind: 'error', title: 'Research failed', detail: 'gone' }],
+    })
+    expect(screen.getByText('1 of 3 agents failed')).toBeTruthy()
+    expect(within(screen.getByRole('region', { name: 'Result' })).queryByRole('button', { name: 'Retry' })).toBeNull()
+  })
+})
+
+describe('result before final', () => {
+  const partial = () =>
+    emit({
+      type: 'result',
+      seq: next(),
+      summary: 'Partial',
+      degraded: true,
+      items: [{ id: 'e', agentId: 'research', kind: 'error', title: 'Research failed', detail: 'jira timed out' }],
+    })
+  const resultRegion = () => within(screen.getByRole('region', { name: 'Result' }))
+
+  it('after a retried agent is done, the note says the new result is being collected', () => {
+    setup({ waiting: false })
+    status('drafting', 'done')
+    status('scheduling', 'done')
+    partial()
+    fireEvent.click(resultRegion().getByRole('button', { name: 'Retry' }))
+    // Before the agent's next event: the block follows the top bar's phase (running), not the still-failed agent.
+    expect(resultRegion().getByRole('heading', { name: 'Updating' })).toBeTruthy()
+    expect(resultRegion().getByText('This result is outdated - attempt 2 of Research it is running')).toBeTruthy()
+    status('research', 'running', { attempt: 2 })
+    expect(resultRegion().getByText('This result is outdated - attempt 2 of Research it is running')).toBeTruthy()
+    status('research', 'done')
+    expect(resultRegion().getByRole('heading', { name: 'Updating' })).toBeTruthy()
+    expect(resultRegion().getByText('Every agent has finished; collecting the new result. It replaces this one.')).toBeTruthy()
+    // The row agrees with the note: the agent is done, so no "Retrying..." (its slot keeps its place).
+    expect(resultRegion().queryByText('Retrying...')).toBeNull()
+  })
+
+  it('a result that arrives before the last Done shows Updating, then Complete after the Done', () => {
+    setup({ waiting: false })
+    status('research', 'done')
+    status('drafting', 'done')
+    // Delivered before the last Done, though logically after it: the result's seq is higher than that Done's.
+    emit({ type: 'result', seq: seq + 10, summary: 'All done', items: [] })
+    expect(resultRegion().getByRole('heading', { name: 'Updating' })).toBeTruthy()
+    expect(resultRegion().getByText('An agent is still finishing; this result may still change.')).toBeTruthy()
+    status('scheduling', 'done')
+    expect(resultRegion().getByRole('heading', { name: 'Complete' })).toBeTruthy()
   })
 })
 
