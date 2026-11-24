@@ -287,4 +287,4 @@ the waiting queue exactly the agents that need the user, the newest result with 
 
 ## 13. Time spent
 
-Time spent: _to be filled in_.
+About 8 hours, including about 1.5 hours of architecture, wireframes and design before the first commit.
