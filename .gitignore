@@ -1,0 +1,39 @@
+
+# Beads / Dolt files (added by bd init)
+.dolt/
+*.db
+.beads-credential-key
+.beads/proxieddb/
+*.gate.lock*
+
+# Local editor, OS and tool state
+.DS_Store
+.idea/
+graft/
+.trail/cache/
+.claude/settings.local.json
+
+# App (merged from the create-vite and Playwright generators)
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+node_modules
+dist
+dist-ssr
+*.local
+.vscode/*
+!.vscode/extensions.json
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+/app/test-results/
+/app/playwright-report/
+/app/blob-report/
+/app/playwright/.cache/
+/app/playwright/.auth/
