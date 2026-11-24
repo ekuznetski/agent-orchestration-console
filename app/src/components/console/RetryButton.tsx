@@ -26,8 +26,10 @@ export function RetryButton({ agentId, label = 'Retry' }: { agentId: string; lab
 
   return (
     <div className="flex flex-col items-start gap-1">
-      <Button onClick={onClick}>{label}</Button>
-      {refused && <span style={{ color: 'var(--tone-danger)' }}>{REFUSED}</span>}
+      <Button size="lg" onClick={onClick}>
+        {label}
+      </Button>
+      {refused && <span className="text-failed text-sm">{REFUSED}</span>}
     </div>
   )
 }

@@ -1,10 +1,38 @@
 import { useLayoutEffect, useRef } from 'react'
+import { CircleCheck, CircleX, LoaderCircle } from 'lucide-react'
 import { actLabel } from '@/config/agentTags'
 import type { AgentModel } from '@/store/console.reducer'
 import { traceOf } from '@/store/selectors'
 
-/** The agent's steps by seq, grouped by attempt. Capped at 400px with its own scroll; a new step
- * scrolls to the bottom only while the user is already at the bottom. */
+type Row = { key: string; kind: 'step' | 'failure' | 'working'; number?: number; label?: string; text: string; error?: string }
+
+/** One row of the timeline: number, icon on the line, text (a failure shows its status line verbatim). The line joins rows of one attempt; it turns red
+ * into a failure. */
+function TraceRow({ row, up, down }: { row: Row; up: Row | null; down: Row | null }) {
+  const failed = row.kind === 'failure'
+  const segment = (to: Row) => (to.kind === 'failure' || failed ? 'bg-failed' : to.kind === 'working' ? 'bg-track' : 'bg-done')
+  const Icon = failed ? CircleX : row.kind === 'working' ? LoaderCircle : CircleCheck
+  return (
+    <li
+      className={`relative grid grid-cols-[22px_16px_minmax(0,1fr)] items-start gap-x-2.5 px-3 py-[7px] text-label leading-5 ${failed ? 'bg-failed-tint text-failed rounded-md' : ''}`}
+    >
+      {up && <span aria-hidden="true" className={`absolute top-0 left-[51px] h-3.5 w-0.5 ${segment(up)}`} />}
+      {down && <span aria-hidden="true" className={`absolute top-3.5 bottom-0 left-[51px] w-0.5 ${segment(down)}`} />}
+      <span className="text-faint text-right text-xs leading-5 tabular-nums">{row.number ?? ''}</span>
+      <Icon
+        aria-hidden="true"
+        className={`relative z-10 mt-0.5 size-4 rounded-full ${failed ? 'bg-failed-tint text-failed' : row.kind === 'working' ? 'bg-card text-faint motion-safe:animate-spin' : 'bg-card text-done'}`}
+      />
+      <span className={row.kind === 'working' ? 'text-muted-foreground' : undefined}>
+        {row.label && <b className="font-semibold">{row.label}:</b>} {row.text}
+        {row.error && <span className="block font-mono text-xs">{row.error}</span>}
+      </span>
+    </li>
+  )
+}
+
+/** The agent's steps by seq, grouped by attempt, numbered across attempts. Capped at 400px with its own
+ * scroll; a new step scrolls to the bottom only while the user is already at the bottom. */
 export function AgentTrace({ agent }: { agent: AgentModel }) {
   const attempts = traceOf(agent)
   const box = useRef<HTMLDivElement>(null)
@@ -18,9 +46,7 @@ export function AgentTrace({ agent }: { agent: AgentModel }) {
 
   if (agent.steps.length === 0 && attempts.every((attempt) => attempt.rows.length === 0)) {
     return (
-      <p className="text-muted-foreground mt-2 border-t border-dashed pt-2 italic">
-        No steps yet. Steps appear here as the agent reports them.
-      </p>
+      <p className="text-muted-foreground px-4 pb-3 text-label leading-5">No steps yet. Steps appear here as the agent reports them.</p>
     )
   }
 
@@ -29,6 +55,23 @@ export function AgentTrace({ agent }: { agent: AgentModel }) {
   const working =
     agent.tag === 'running' && status !== null && status.seq > (agent.gate?.event.seq ?? 0) && last.rows.some((row) => row.kind === 'step')
 
+  // Steps are stored in seq order, so a step's number is its place in that list, across attempts.
+  const numberOf = new Map(agent.steps.map((step, i) => [step.seq, i + 1]))
+  const groups = attempts.map((attempt) => {
+    const rows: Row[] = attempt.rows.map((row) =>
+      row.kind === 'step'
+        ? { key: `s${row.seq}`, kind: 'step', number: numberOf.get(row.seq), label: actLabel(row.step.act), text: row.step.detail }
+        : {
+            key: `f${row.seq}`,
+            kind: 'failure',
+            text: row.statusLine,
+            error: row.error?.message,
+          },
+    )
+    if (working && attempt === last && status) rows.push({ key: 'working', kind: 'working', label: 'Working', text: status.statusLine })
+    return { n: attempt.n, rows }
+  })
+
   return (
     <div
       ref={box}
@@ -36,32 +79,20 @@ export function AgentTrace({ agent }: { agent: AgentModel }) {
         const el = e.currentTarget
         atBottom.current = el.scrollTop + el.clientHeight >= el.scrollHeight - 4
       }}
-      className="mt-2 flex max-h-[400px] flex-col gap-1 overflow-y-auto border-t border-dashed pt-2"
+      className="mx-1 mb-2 max-h-[400px] overflow-y-auto"
     >
-      {attempts.map((attempt) => (
-        <div key={attempt.n} className="flex flex-col gap-1">
-          {attempts.length > 1 && <div className="text-muted-foreground pt-1 text-[11px] tracking-wide uppercase">Attempt {attempt.n}</div>}
-          {attempt.rows.map((row) =>
-            row.kind === 'step' ? (
-              <div key={row.seq}>
-                <b>{actLabel(row.step.act)}:</b> {row.step.detail}
-              </div>
-            ) : (
-              <div
-                key={row.seq}
-                className="rounded-sm px-1.5 py-0.5"
-                style={{ background: 'var(--tone-danger-bg)', color: 'var(--tone-danger)' }}
-              >
-                {row.statusLine}
-                {row.error && <div className="font-mono text-xs">{row.error.message}</div>}
-              </div>
-            ),
-          )}
-          {working && attempt === last && status && (
-            <div>
-              <b>Working:</b> {status.statusLine}
+      {groups.map((group) => (
+        <div key={group.n}>
+          {groups.length > 1 && (
+            <div className="text-muted-foreground after:bg-border flex items-center gap-2 px-3 pt-2 pb-1 text-xs font-semibold after:h-px after:flex-1">
+              Attempt {group.n}
             </div>
           )}
+          <ol className="m-0 list-none p-0">
+            {group.rows.map((row, i) => (
+              <TraceRow key={row.key} row={row} up={group.rows[i - 1] ?? null} down={group.rows[i + 1] ?? null} />
+            ))}
+          </ol>
         </div>
       ))}
     </div>

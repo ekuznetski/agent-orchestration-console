@@ -1,13 +1,13 @@
 import { useEffect, useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
-import { TAGS, agentType, toneColor } from '@/config/agentTags'
+import { TAGS, toneEdge } from '@/config/agentTags'
 import type { AgentModel } from '@/store/console.reducer'
 import { useConsoleStore } from '@/store/console.store'
 import { useShownDecision, useVisibleOutcome } from '@/store/hooks'
 import { pendingCommand, phaseOf, statusLineOf, waitingQueue } from '@/store/selectors'
 import { useViewStore, type Outcome } from '@/store/view.store'
 import { AgentRecord } from './AgentRecord'
-import { ConfirmationDecision, FailureDecision, QuestionDecision, type Act } from './DecisionViews'
+import { ConfirmationDecision, FailureDecision, Frame, QuestionDecision, type Act } from './DecisionViews'
 
 function emptyLine(phase: ReturnType<typeof phaseOf>, allQueued: boolean): string {
   if (phase === 'cancelled') return 'The run was cancelled.'
@@ -21,9 +21,11 @@ function EmptyState() {
   const phase = useConsoleStore(phaseOf)
   const allQueued = useConsoleStore((state) => (state.plan?.order ?? []).every((id) => state.agents[id].tag === 'queued'))
   return (
-    <div className="text-muted-foreground flex flex-col gap-1 pt-8 text-center">
-      <b className="text-foreground text-sm">Nothing needs you right now</b>
-      <span>{emptyLine(phase, allQueued)}</span>
+    <div className="text-muted-foreground grid flex-1 place-items-center p-6 text-center text-label">
+      <div>
+        <b className="text-foreground mb-1 block text-sm font-semibold">Nothing needs you right now</b>
+        {emptyLine(phase, allQueued)}
+      </div>
     </div>
   )
 }
@@ -63,22 +65,22 @@ function OutcomeView({ outcome, onNext }: { outcome: Outcome; onNext: (id: strin
   }, [])
 
   return (
-    <div className="flex flex-col gap-3">
-      <div ref={statusRef} tabIndex={-1} className="bg-muted flex flex-col gap-0.5 rounded-md px-3.5 py-3 outline-none" role="status">
-        <b className="break-words" style={{ color: 'var(--tone-success)' }}>
-          {sentLine(outcome)}
-        </b>
-        <span className="text-muted-foreground truncate" title={now}>
-          {now}
-        </span>
+    <div className="flex flex-1 flex-col">
+      <div ref={statusRef} tabIndex={-1} role="status" className="flex flex-1 flex-col outline-none">
+        <Frame band="done" who={agent.label} title={<span className="break-words">{sentLine(outcome)}</span>}>
+          <p className="text-muted-foreground truncate" title={now}>
+            {now}
+          </p>
+        </Frame>
       </div>
-      <div className="flex min-h-8 items-center">
+      {/* The footer bar at the bottom of the panel: the button on the right, or a muted line in the same height. */}
+      <div className="mt-auto flex h-[61px] items-center justify-end border-t px-4">
         {nextAgent ? (
-          <Button ref={nextRef} onClick={() => onNext(nextAgent.id)}>
-            Next decision: {agentType(nextAgent.type).name}
+          <Button size="lg" ref={nextRef} onClick={() => onNext(nextAgent.id)}>
+            Next decision: {nextAgent.label}
           </Button>
         ) : (
-          <span className="text-muted-foreground">Nothing else needs you right now.</span>
+          <span className="text-muted-foreground mr-auto text-sm">Nothing else needs you right now.</span>
         )}
       </div>
     </div>
@@ -128,13 +130,8 @@ export function DecisionPanel() {
     return accepted
   }
 
-  const edge = recordAgent
-    ? toneColor(TAGS[recordAgent.tag].tone)
-    : outcome
-      ? 'var(--tone-success)'
-      : agent
-        ? toneColor(TAGS[agent.tag].tone)
-        : 'transparent'
+  const edgeTag = recordAgent?.tag ?? (outcome ? 'done' : agent?.tag)
+  const edge = edgeTag ? toneEdge(TAGS[edgeTag].tone) : 'border-l-border'
 
   return (
     <aside
@@ -143,37 +140,36 @@ export function DecisionPanel() {
       // Any next user action in the panel clears a refused-command message; the action itself may set it again.
       onClickCapture={() => setRefusedId(null)}
       onChangeCapture={() => setRefusedId(null)}
-      className="flex min-h-0 flex-col gap-2.5 overflow-y-auto border-l-[3px] p-3.5"
-      style={{ borderLeftColor: edge }}
+      className={`bg-card shadow-raised flex min-h-[420px] flex-col overflow-hidden rounded-lg border border-l-[3px] ${edge}`}
     >
       {recordId ? (
         <>
-          <div className="flex items-center justify-between gap-2">
-            <h2 ref={recordRef} tabIndex={-1} className="text-sm font-bold outline-none">
+          <div className="flex items-center justify-between gap-2 border-b px-4 py-3">
+            <h2 ref={recordRef} tabIndex={-1} className="text-title font-semibold outline-none">
               Agent record
             </h2>
-            <Button variant="outline" size="sm" onClick={backToDecisions}>
+            <Button variant="outline" onClick={backToDecisions}>
               {waitingCount > 0 ? `Back to decisions (${waitingCount})` : 'Back to decisions'}
             </Button>
           </div>
-          <AgentRecord id={recordId} />
+          <div className="p-4">
+            <AgentRecord id={recordId} />
+          </div>
         </>
       ) : (
         <>
-          <h2 className="text-sm font-bold">Decisions waiting for you</h2>
+          <div className="flex items-center gap-2 border-b px-4 py-3">
+            <h2 className="text-title font-semibold">Decisions waiting for you</h2>
+            {waitingCount > 0 && (
+              <span className="text-muted-foreground ml-2 text-label font-semibold tabular-nums">
+                {waitingCount} {waitingCount === 1 ? 'needs' : 'need'} you
+              </span>
+            )}
+          </div>
           {outcome ? (
             <OutcomeView key={`${outcome.agentId}-${outcome.kind}`} outcome={outcome} onNext={move} />
           ) : agent ? (
-            <div
-              ref={decisionRef}
-              tabIndex={-1}
-              role="group"
-              aria-label={`${agentType(agent.type).name} - ${agent.label}`}
-              className="flex flex-col gap-2.5 outline-none"
-            >
-              <div className="text-muted-foreground">
-                {agentType(agent.type).name} - {agent.label}
-              </div>
+            <div ref={decisionRef} tabIndex={-1} role="group" aria-label={agent.label} className="flex flex-1 flex-col outline-none">
               {agent.tag === 'failed' ? (
                 <FailureDecision agent={agent} />
               ) : agent.gate?.event.type === 'confirmation_required' ? (

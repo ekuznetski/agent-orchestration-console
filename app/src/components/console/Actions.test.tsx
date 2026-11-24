@@ -106,11 +106,11 @@ describe('approve', () => {
     setup()
     openCard('drafting')
     click('Approve and send')
-    expect(outcome().textContent).toBe('ApprovedWaiting for the agent to respond.')
+    expect(outcome().textContent).toBe('Draft itApprovedWaiting for the agent to respond.')
     step('drafting')
-    expect(outcome().textContent).toBe('Approveddrafting step')
+    expect(outcome().textContent).toBe('Draft itApproveddrafting step')
     status('drafting', 'done')
-    expect(outcome().textContent).toBe('Approveddrafting done')
+    expect(outcome().textContent).toBe('Draft itApproveddrafting done')
   })
 
   it('a card click on an agent whose command is pending opens its record, not its decision', () => {
@@ -139,14 +139,14 @@ describe('edit', () => {
     fireEvent.change(panel().getByLabelText('Message'), { target: { value: 'New body' } })
     click('Save changes')
     expect(fakeOrchestrator.edit).toHaveBeenCalledWith('drafting', { subject: 'New subject', body: 'New body' })
-    expect(outcome().textContent).toBe('Edited version sentWaiting for the agent to respond.')
-    expect(panel().getByRole('button', { name: 'Next decision: Research' })).toBeTruthy()
+    expect(outcome().textContent).toBe('Draft itEdited version sentWaiting for the agent to respond.')
+    expect(panel().getByRole('button', { name: 'Next decision: Research it' })).toBeTruthy()
 
     step('drafting')
-    expect(outcome().textContent).toBe('Edited version sentWaiting for the agent to respond.')
+    expect(outcome().textContent).toBe('Draft itEdited version sentWaiting for the agent to respond.')
     confirmation({ draft: { subject: 'New subject', body: 'New body' }, revision: 2 })
     expect(within(outcome()).getByText('Edited version sent')).toBeTruthy()
-    click('Next decision: Drafting')
+    click('Next decision: Draft it')
     expect(panel().getByText('Send the edited email?')).toBeTruthy()
     expect(panel().getByText('Edited version')).toBeTruthy()
     click('Approve and send')
@@ -158,7 +158,9 @@ describe('edit', () => {
     status('drafting', 'running')
     confirmation({ action: 'archive_ticket', effectClass: 'reversible', draft: { ticket: 'NW-1', body: 'Close it' } })
     openCard('drafting')
-    expect(panel().getByText('Approve this action?')).toBeTruthy()
+    expect(panel().getByText('Approve archive_ticket?')).toBeTruthy()
+    expect(panel().getByText('Target')).toBeTruthy()
+    expect(panel().queryByText('To')).toBeNull()
     expect(panel().getByRole('button', { name: 'Approve' })).toBeTruthy()
     expect(panel().getByRole('button', { name: 'Edit' })).toBeTruthy()
     expect(panel().getByText('ticket')).toBeTruthy()
@@ -181,6 +183,20 @@ describe('answer a question', () => {
     expect(panel().getByText('Answer sent: Week B')).toBeTruthy()
   })
 
+  it('gives the answer back to the picked option when the typed words are cleared', () => {
+    setup()
+    openCard('scheduling')
+    fireEvent.click(panel().getByText('Week A'))
+    const own = panel().getByLabelText('Or answer in your own words')
+    fireEvent.change(own, { target: { value: 'x' } })
+    expect((panel().getByRole('radio', { name: /Week A/ }) as HTMLElement).getAttribute('aria-checked')).toBe('false')
+    fireEvent.change(own, { target: { value: '' } })
+    expect((panel().getByRole('radio', { name: /Week A/ }) as HTMLElement).getAttribute('aria-checked')).toBe('true')
+    expect((panel().getByRole('button', { name: 'Send answer' }) as HTMLButtonElement).disabled).toBe(false)
+    click('Send answer')
+    expect(fakeOrchestrator.resolve).toHaveBeenCalledWith('scheduling', 'week_a')
+  })
+
   it('sends the trimmed own words when typing made them the answer', () => {
     setup()
     openCard('scheduling')
@@ -199,9 +215,9 @@ describe('retry', () => {
     expect(panel().getByText('The 1 step of attempt 1 stays in its trace. Retry starts attempt 2.')).toBeTruthy()
     click('Retry')
     expect(fakeOrchestrator.retry).toHaveBeenCalledWith('research')
-    expect(outcome().textContent).toBe('Retry sent: attempt 2Waiting for the agent to respond.')
+    expect(outcome().textContent).toBe('Research itRetry sent: attempt 2Waiting for the agent to respond.')
     status('research', 'running', { attempt: 2 })
-    expect(outcome().textContent).toBe('Retry sent: attempt 2research running')
+    expect(outcome().textContent).toBe('Research itRetry sent: attempt 2research running')
   })
 
   it('retries from the error item of a partial result', () => {
@@ -248,7 +264,7 @@ describe('next decision', () => {
     click('Retry')
     act(() => vi.advanceTimersByTime(10_000))
     expect(panel().getByText('Retry sent: attempt 2')).toBeTruthy()
-    click('Next decision: Drafting')
+    click('Next decision: Draft it')
     expect(panel().getByText('Send this email?')).toBeTruthy()
   })
 
@@ -260,7 +276,7 @@ describe('next decision', () => {
     status('drafting', 'running')
     confirmation()
     expect(panel().getByText('Retry sent: attempt 2')).toBeTruthy()
-    expect(panel().getByRole('button', { name: 'Next decision: Drafting' })).toBeTruthy()
+    expect(panel().getByRole('button', { name: 'Next decision: Draft it' })).toBeTruthy()
   })
 
   it('a decision that arrives does not replace the decision on screen', () => {
@@ -276,11 +292,11 @@ describe('focus', () => {
   it('moves to the editor on Edit, to the Next decision button after Save, to the decision on a card click', () => {
     setup()
     openCard('drafting')
-    expect(document.activeElement).toBe(panel().getByRole('group', { name: 'Drafting - Draft it' }))
+    expect(document.activeElement).toBe(panel().getByRole('group', { name: 'Draft it' }))
     click('Edit email')
     expect(document.activeElement).toBe(panel().getByLabelText('Subject'))
     click('Save changes')
-    expect(document.activeElement).toBe(panel().getByRole('button', { name: 'Next decision: Research' }))
+    expect(document.activeElement).toBe(panel().getByRole('button', { name: 'Next decision: Research it' }))
   })
 
   it('returns to the Edit button after Cancel edit', () => {
@@ -296,7 +312,7 @@ describe('focus', () => {
     status('drafting', 'running')
     confirmation()
     click('Retry')
-    click('Next decision: Drafting')
+    click('Next decision: Draft it')
     click('Approve and send')
     expect(document.activeElement).toBe(outcome())
   })

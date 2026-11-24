@@ -1,3 +1,5 @@
+import { CircleCheck, CircleX, LoaderCircle } from 'lucide-react'
+import { Badge } from '@/components/ui/badge'
 import { resultKindLabel } from '@/config/agentTags'
 import { useConsoleStore } from '@/store/console.store'
 import { useWaitingQueue } from '@/store/hooks'
@@ -10,6 +12,7 @@ export function ResultBlock() {
   const result = useConsoleStore((state) => state.result)
   const agents = useConsoleStore((state) => state.agents)
   const cancelled = useConsoleStore((state) => state.status === 'cancelled')
+  const total = useConsoleStore((state) => state.plan?.order.length ?? 0)
   const queue = useWaitingQueue()
   if (!result) return null
   const retryable = (agentId: string) => queue.includes(agentId) && agents[agentId].tag === 'failed'
@@ -24,47 +27,75 @@ export function ResultBlock() {
   // A cancelled run will not update the result: it keeps its own heading, not "Updating".
   const updating = result.outdated && !cancelled
   const head = updating ? 'Updating' : degraded ? 'Partial result' : 'Complete'
-  const headColor = !updating && degraded ? 'var(--tone-danger)' : undefined
+  const look = updating
+    ? { band: 'bg-muted border-border', ink: 'text-foreground', Icon: LoaderCircle, icon: 'text-foreground motion-safe:animate-spin' }
+    : degraded
+      ? { band: 'bg-failed-tint border-failed', ink: 'text-failed', Icon: CircleX, icon: 'text-failed' }
+      : { band: 'bg-done-tint border-done', ink: 'text-done-ink', Icon: CircleCheck, icon: 'text-done' }
+  // One line under the heading, truncated, so a change of note never changes the block's height.
+  const note = cancelled
+    ? 'From before the run was cancelled.'
+    : canRetry
+      ? 'An agent failed. Retry it to update this result.'
+      : anyRetrying
+        ? 'Retrying... This result updates when the agent finishes.'
+        : !degraded && !updating
+          ? `All ${total} agents finished`
+          : null
 
   return (
-    <section aria-label="Result" data-version={result.version} className="bg-muted flex flex-col gap-2 rounded-md border p-3">
-      <h2 className="text-base font-bold" style={{ color: headColor }}>
-        {head}
-      </h2>
-      {cancelled && <p className="text-muted-foreground">From before the run was cancelled.</p>}
-      {(canRetry || anyRetrying) && (
-        <p className="text-muted-foreground">
-          {canRetry ? 'An agent failed. Retry it to update this result.' : 'Retrying... This result updates when the agent finishes.'}
-        </p>
-      )}
-      <div className={updating ? 'flex flex-col gap-2 opacity-50' : 'flex flex-col gap-2'}>
-        <p>{result.event.summary}</p>
+    <section
+      aria-label="Result"
+      data-version={result.version}
+      className="bg-card shadow-raised flex flex-col overflow-hidden rounded-lg border border-input"
+    >
+      <div className={`border-b px-5 pt-5 pb-4 ${look.band}`}>
+        <div className="flex items-center gap-3">
+          <look.Icon aria-hidden="true" strokeWidth={1.5} className={`size-9 shrink-0 ${look.icon}`} />
+          <div className="min-w-0">
+            <h2 className={`text-heading font-semibold tracking-[-0.01em] ${look.ink}`}>{head}</h2>
+            {note && (
+              <p className={`truncate text-sm ${look.ink}`} title={note}>
+                {note}
+              </p>
+            )}
+          </div>
+        </div>
+        <p className={`mt-4 text-xl font-medium ${updating ? 'text-muted-foreground' : ''}`}>{result.event.summary}</p>
+      </div>
+      <ul className={`m-0 list-none px-4 pt-1 pb-3 ${updating ? 'opacity-60' : ''}`}>
         {result.event.items.map((item) => (
-          <div key={item.id} className="grid grid-cols-[7rem_minmax(0,1fr)] gap-2 border-t pt-1.5">
-            <span
-              className="text-[11px] tracking-wide uppercase"
-              style={{ color: item.kind === 'error' ? 'var(--tone-danger)' : 'var(--tone-neutral)' }}
-            >
-              {resultKindLabel(item.kind)}
-            </span>
-            <div className="flex flex-col gap-0.5">
-              <b>{item.title}</b>
-              <span className="text-muted-foreground">{item.detail}</span>
+          <li key={item.id} className="grid grid-cols-[7.5rem_minmax(0,1fr)] gap-x-4 border-t py-3 first:border-t-0">
+            <div className="flex flex-col">
+              <span className={`text-xs font-semibold ${item.kind === 'error' ? 'text-failed' : 'text-muted-foreground'}`}>
+                {resultKindLabel(item.kind)}
+              </span>
+              <span className="text-faint text-xs">{agents[item.agentId].label}</span>
+            </div>
+            <div className="flex flex-col text-sm">
+              <b className={`font-semibold ${item.kind === 'error' ? 'text-failed' : ''}`}>{item.title}</b>
+              <span>{item.detail}</span>
               {item.sources && item.sources.length > 0 && (
-                <span className="text-muted-foreground text-xs">Sources: {item.sources.join(', ')}</span>
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {item.sources.map((source) => (
+                    <Badge key={source} variant="outline" className="bg-card text-muted-foreground">
+                      {source}
+                    </Badge>
+                  ))}
+                </div>
               )}
               {item.kind === 'error' && retryable(item.agentId) && (
-                <div className="pt-1">
+                <div className="pt-2">
                   <RetryButton agentId={item.agentId} label="Retry agent" />
                 </div>
               )}
               {item.kind === 'error' && retrying(item.agentId) && (
-                <div className="text-muted-foreground flex h-9 items-center pt-1">Retrying...</div>
+                <div className="text-muted-foreground flex h-11 items-center pt-2">Retrying...</div>
               )}
             </div>
-          </div>
+          </li>
         ))}
-      </div>
+      </ul>
     </section>
   )
 }

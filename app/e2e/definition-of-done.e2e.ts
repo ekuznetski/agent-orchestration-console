@@ -19,6 +19,9 @@ test('1. submitting a request renders exactly one status line per agent', async 
   await startRun(page, jitter)
   await expect(page.getByTestId(/^agent-card-/)).toHaveCount(3)
   await expect(page.getByTestId('agent-status-line')).toHaveCount(3)
+  // The debug controls are locked during the run and look it: the Jitter label (with its box) is dimmed.
+  const jitterLabel = page.getByText('Jitter', { exact: true })
+  await expect(jitterLabel).toHaveCSS('opacity', '0.5')
 })
 
 test('2. a line updates in place: same element, no duplicates', async ({ page, jitter }) => {
@@ -75,9 +78,11 @@ test('4. a confirmation does not fire until approved; Edit forces a fresh approv
   await panel(page).getByRole('button', { name: 'Edit email' }).click()
   await panel(page).getByLabel('Subject').fill('Edited in the e2e test')
   await panel(page).getByRole('button', { name: 'Save changes' }).click()
-  await expect(panel(page).getByRole('status')).toHaveText('Edited version sentWaiting for the agent to respond.')
+  await expect(panel(page).getByRole('status')).toHaveText(
+    'Draft a follow-up to Maya ChenEdited version sentWaiting for the agent to respond.',
+  )
   await expect(panel(page).getByRole('button', { name: 'Approve and send' })).toHaveCount(0)
-  await panel(page).getByRole('button', { name: 'Next decision: Drafting' }).click({ timeout: 15_000 })
+  await panel(page).getByRole('button', { name: 'Next decision: Draft a follow-up to Maya Chen' }).click({ timeout: 15_000 })
   await expect(panel(page).getByText('Send the edited email?')).toBeVisible()
   await expect(badge(page, 'drafting')).toHaveText('Needs approval')
 
@@ -169,15 +174,21 @@ test('the open event log keeps its height and its toggle its place while events 
   await startRun(page, jitter)
   const toggle = page.getByRole('button', { name: /^Event log/ })
   await toggle.click()
-  const log = page.getByText('Arrival order.', { exact: false }).locator('xpath=..').locator('xpath=..')
-  const first = await log.boundingBox()
+  const log = page.getByRole('region', { name: 'Event log' })
+  // Page coordinates: the page itself may scroll.
+  const pageBox = () =>
+    log.evaluate((el) => {
+      const r = el.getBoundingClientRect()
+      return { y: r.top + window.scrollY, height: r.height }
+    })
+  const first = await pageBox()
   const toggleX = (await toggle.boundingBox())!.x
   await expect(badge(page, 'drafting')).toHaveText('Needs approval')
   await retryResearch(page)
   await approveDrafting(page)
   await answerScheduling(page)
   await expect(page.getByRole('region', { name: 'Result' }).getByRole('heading', { name: 'Complete' })).toBeVisible()
-  expect(await log.boundingBox()).toEqual(first)
+  expect(await pageBox()).toEqual(first)
   expect((await toggle.boundingBox())!.x).toBe(toggleX)
 
   // A long payload truncates instead of widening the table, also in a narrow window.
@@ -198,4 +209,12 @@ test('agent cards keep their position while decisions open and close', async ({ 
   expect(watch.cards).toHaveLength(3)
   expect(watch.versions).toEqual([1])
   expect(watch.violations).toEqual([])
+})
+
+test('form controls keep the card surface when the system is in dark mode', async ({ page }) => {
+  await page.emulateMedia({ colorScheme: 'dark' })
+  await page.goto('/')
+  const fill = (locator: ReturnType<typeof page.locator>) => locator.evaluate((el) => getComputedStyle(el).backgroundColor)
+  expect(await fill(page.getByRole('textbox', { name: 'Request' }))).toBe('rgba(0, 0, 0, 0)')
+  expect(await fill(page.getByRole('checkbox', { name: 'Jitter' }))).toBe('rgba(0, 0, 0, 0)')
 })

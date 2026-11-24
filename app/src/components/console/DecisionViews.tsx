@@ -1,11 +1,12 @@
 import { useEffect, useRef, type ReactNode } from 'react'
+import { CircleAlert, Info } from 'lucide-react'
 import type { ConfirmationRequiredEvent, Draft, EscalationRequiredEvent } from '@mock/orchestrator.js'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { Textarea } from '@/components/ui/textarea'
-import { actionLabels, effectClassLabel, toneColor } from '@/config/agentTags'
+import { actionLabels, effectClassLabel } from '@/config/agentTags'
 import type { AgentModel, Gate } from '@/store/console.reducer'
 import { useViewStore, type Answer, type Outcome } from '@/store/view.store'
 import { approve, edit, resolve } from '@/subscriptionManager/subscription'
@@ -16,37 +17,80 @@ export type Act = (agentId: string, send: () => boolean, sent: Omit<Outcome, 'ag
 
 const Row = ({ label, children }: { label: string; children: ReactNode }) => (
   <>
-    <span className="text-muted-foreground">{label}</span>
-    <span className="min-w-0 break-words">{children}</span>
+    <dt className="text-muted-foreground">{label}</dt>
+    <dd className="m-0 min-w-0 break-words">{children}</dd>
   </>
 )
 
-const Refused = ({ show }: { show: boolean }) => (show ? <p style={{ color: 'var(--tone-danger)' }}>{REFUSED}</p> : null)
+const Refused = ({ show }: { show: boolean }) => (show ? <p className="text-failed text-sm">{REFUSED}</p> : null)
 
+const BAND = {
+  needs: 'bg-needs border-needs-edge',
+  failed: 'bg-failed-tint border-failed text-failed',
+  done: 'bg-done-tint border-done text-done-ink',
+}
+
+/** The panel's frame for one decision or outcome (design canvas): a coloured band with the agent's label and
+ * the question, the body, and a footer with the actions. */
+export function Frame({
+  band,
+  who,
+  title,
+  children,
+  footer,
+}: {
+  band: keyof typeof BAND
+  who: string
+  title: ReactNode
+  children?: ReactNode
+  footer?: ReactNode
+}) {
+  return (
+    <div className="flex flex-1 flex-col">
+      <div className={`border-b px-4 py-3 ${BAND[band]}`}>
+        <div className="text-xs font-semibold">{who}</div>
+        <h3 className="mt-0.5 text-base font-semibold">{title}</h3>
+      </div>
+      {children && <div className="flex flex-col gap-3 p-4 text-sm">{children}</div>}
+      {/* The footer sits at the bottom of the panel card, whatever the body's height. */}
+      {footer && <div className="mt-auto flex flex-col items-stretch gap-2.5 border-t px-4 py-3">{footer}</div>}
+    </div>
+  )
+}
+
+/** The effect of approving, right under the buttons where the eye and the cursor are when the user clicks.
+ * Irreversible reads in the failed red; every other effect class in the normal text colour. */
 function EffectLine({ effectClass }: { effectClass: string }) {
   const effect = effectClassLabel(effectClass)
   return (
-    <p className="text-xs" style={{ color: toneColor(effect.tone) }}>
+    <p className={`flex items-center gap-1.5 text-sm font-semibold ${effect.tone === 'danger' ? 'text-failed' : 'text-foreground'}`}>
+      <CircleAlert aria-hidden="true" className="size-4 shrink-0" />
       {effect.label}: {effect.note}
     </p>
   )
 }
 
-/** Every field that will be sent: To, subject, other draft keys as name: value, then the body. */
-function DraftFields({ target, draft }: { target: string; draft: Draft }) {
+const Fields = ({ children }: { children: ReactNode }) => (
+  <dl className="m-0 grid grid-cols-[64px_minmax(0,1fr)] gap-x-3 gap-y-1.5 text-label">{children}</dl>
+)
+
+/** Every field that will be sent: the target, subject, other draft keys as name: value, then the body. */
+function DraftFields({ target, targetLabel, draft }: { target: string; targetLabel: string; draft: Draft }) {
   const { subject, body, ...rest } = draft
   return (
     <>
-      <div className="grid grid-cols-[5rem_minmax(0,1fr)] gap-x-2.5 gap-y-1">
-        <Row label="To">{target}</Row>
+      <Fields>
+        <Row label={targetLabel}>
+          <span className="font-mono text-code [overflow-wrap:anywhere]">{target}</span>
+        </Row>
         {subject !== undefined && <Row label="Subject">{subject}</Row>}
         {Object.entries(rest).map(([key, value]) => (
           <Row key={key} label={key}>
             {typeof value === 'string' ? value : JSON.stringify(value)}
           </Row>
         ))}
-      </div>
-      {body !== undefined && <div className="bg-muted rounded-sm border p-2 break-words whitespace-pre-wrap">{body}</div>}
+      </Fields>
+      {body !== undefined && <div className="bg-muted rounded-md px-3.5 py-3 break-words whitespace-pre-wrap">{body}</div>}
     </>
   )
 }
@@ -83,24 +127,44 @@ function Editor({
   }
 
   return (
-    <div className="flex flex-col gap-2.5">
-      <h3 className="text-[15px] font-bold">{labels.editTitle}</h3>
-      <div className="grid grid-cols-[5rem_minmax(0,1fr)] gap-x-2.5">
-        <Row label="To">
-          <span className="text-muted-foreground">{gate.target}</span>
-        </Row>
-      </div>
-      {draft.subject !== undefined && (
+    <Frame
+      band="needs"
+      who={agent.label}
+      title={labels.editTitle}
+      footer={
         <>
-          <Label htmlFor={`subject-${agent.id}`} className="text-muted-foreground font-normal">
+          <div className="flex gap-2">
+            <Button size="lg" onClick={save} disabled={empty}>
+              Save changes
+            </Button>
+            <Button size="lg" variant="outline" onClick={onCancel}>
+              Cancel edit
+            </Button>
+          </div>
+          <Refused show={refused} />
+          <p className="text-muted-foreground flex items-center gap-1.5 text-xs">
+            <Info aria-hidden="true" className="size-3.5 shrink-0" />
+            {labels.editNote}
+          </p>
+        </>
+      }
+    >
+      <Fields>
+        <Row label={labels.targetLabel}>
+          <span className="text-muted-foreground font-mono text-code [overflow-wrap:anywhere]">{gate.target}</span>
+        </Row>
+      </Fields>
+      {draft.subject !== undefined && (
+        <div className="flex flex-col gap-1">
+          <Label htmlFor={`subject-${agent.id}`} className="text-muted-foreground text-xs font-semibold">
             Subject
           </Label>
           <Input ref={subjectRef} id={`subject-${agent.id}`} value={draft.subject} onChange={(e) => change('subject', e.target.value)} />
-        </>
+        </div>
       )}
       {draft.body !== undefined && (
-        <>
-          <Label htmlFor={`body-${agent.id}`} className="text-muted-foreground font-normal">
+        <div className="flex flex-col gap-1">
+          <Label htmlFor={`body-${agent.id}`} className="text-muted-foreground text-xs font-semibold">
             {labels.bodyLabel}
           </Label>
           <Textarea
@@ -108,21 +172,11 @@ function Editor({
             id={`body-${agent.id}`}
             value={draft.body}
             onChange={(e) => change('body', e.target.value)}
-            className="min-h-48 resize-y"
+            className="min-h-60 resize-y"
           />
-        </>
+        </div>
       )}
-      <div className="flex gap-2">
-        <Button onClick={save} disabled={empty}>
-          Save changes
-        </Button>
-        <Button variant="outline" onClick={onCancel}>
-          Cancel edit
-        </Button>
-      </div>
-      <Refused show={refused} />
-      <p className="text-muted-foreground">{labels.editNote}</p>
-    </div>
+    </Frame>
   )
 }
 
@@ -149,21 +203,28 @@ export function ConfirmationDecision({ agent, gate, refused, act }: { agent: Age
   if (entry) return <Editor agent={agent} gate={event} refused={refused} act={act} onCancel={cancelEdit} />
 
   return (
-    <div className="flex flex-col gap-2.5">
-      <div className="flex items-center gap-2">
-        <h3 className="text-[15px] font-bold">{gate.revision > 1 ? labels.editedTitle : labels.title}</h3>
-        {gate.revision > 1 && <span className="bg-muted rounded-sm border px-1.5 text-xs">Edited version</span>}
-      </div>
-      <DraftFields target={event.target} draft={event.draft} />
-      <div className="flex gap-2">
-        <Button onClick={() => act(agent.id, () => approve(agent.id), { kind: 'approve' })}>{labels.approve}</Button>
-        <Button ref={editRef} variant="outline" onClick={() => setEdit(agent.id, { draft: event.draft })}>
-          {labels.edit}
-        </Button>
-      </div>
-      <EffectLine effectClass={event.effectClass} />
-      <Refused show={refused} />
-    </div>
+    <Frame
+      band="needs"
+      who={agent.label}
+      title={gate.revision > 1 ? labels.editedTitle : labels.title}
+      footer={
+        <>
+          <div className="flex gap-2">
+            <Button size="lg" onClick={() => act(agent.id, () => approve(agent.id), { kind: 'approve' })}>
+              {labels.approve}
+            </Button>
+            <Button size="lg" ref={editRef} variant="outline" onClick={() => setEdit(agent.id, { draft: event.draft })}>
+              {labels.edit}
+            </Button>
+          </div>
+          <EffectLine effectClass={event.effectClass} />
+          <Refused show={refused} />
+        </>
+      }
+    >
+      {gate.revision > 1 && <span className="bg-muted w-fit rounded-sm border px-1.5 text-xs font-semibold">Edited version</span>}
+      <DraftFields target={event.target} targetLabel={labels.targetLabel} draft={event.draft} />
+    </Frame>
   )
 }
 
@@ -189,46 +250,65 @@ export function QuestionDecision({ agent, gate, refused, act }: { agent: AgentMo
   }
 
   return (
-    <div className="flex flex-col gap-2.5">
-      <h3 className="text-[15px] font-bold">{event.question}</h3>
+    <Frame
+      band="needs"
+      who={agent.label}
+      title={event.question}
+      footer={
+        <>
+          <div>
+            <Button size="lg" onClick={send} disabled={text === null}>
+              Send answer
+            </Button>
+          </div>
+          <Refused show={refused} />
+        </>
+      }
+    >
       <p className="text-muted-foreground">{event.context}</p>
       <RadioGroup
         aria-label={event.question}
         value={usesWords ? null : optionId}
         onValueChange={(value) => setAnswer(agent.id, { optionId: value as string, words, use: 'option' })}
-        className="gap-1.5"
+        className="gap-2"
       >
         {event.options.map((option) => {
           const chosen = !usesWords && optionId === option.id
           return (
             <Label
               key={option.id}
-              className={`grid cursor-pointer grid-cols-[16px_minmax(0,1fr)] items-center gap-x-2 gap-y-0.5 rounded-sm px-2 py-1.5 font-normal ${chosen ? 'border-foreground border-2' : 'm-px border'}`}
+              // The chosen option keeps the 1px border width (nothing moves): primary border and a light fill.
+              className={`grid cursor-pointer grid-cols-[16px_minmax(0,1fr)] items-start gap-x-2.5 gap-y-0.5 rounded-md px-3 py-2.5 text-sm font-normal border ${chosen ? 'border-primary bg-muted' : 'border-input'}`}
             >
-              <RadioGroupItem value={option.id} />
-              <b>{option.label}</b>
+              <RadioGroupItem value={option.id} className="mt-0.5" />
+              <b className="font-semibold">{option.label}</b>
               {option.detail && <span className="text-muted-foreground col-start-2">{option.detail}</span>}
             </Label>
           )
         })}
       </RadioGroup>
-      <Label htmlFor={`own-${agent.id}`} className="text-muted-foreground font-normal">
-        Or answer in your own words
-      </Label>
-      <Input
-        id={`own-${agent.id}`}
-        placeholder="Type an answer"
-        value={words}
-        onChange={(e) => setAnswer(agent.id, { optionId, words: e.target.value, use: 'words' })}
-        className={usesWords && words.trim() ? 'border-foreground border-2' : ''}
-      />
-      <div>
-        <Button onClick={send} disabled={text === null}>
-          Send answer
-        </Button>
+      <div className="flex flex-col gap-1">
+        <Label htmlFor={`own-${agent.id}`} className="text-muted-foreground text-xs font-semibold">
+          Or answer in your own words
+        </Label>
+        <Textarea
+          id={`own-${agent.id}`}
+          rows={4}
+          placeholder="Type an answer"
+          value={words}
+          onChange={(e) =>
+            // Typing makes the words the answer; clearing them gives the answer back to a stored option.
+            setAnswer(agent.id, {
+              optionId,
+              words: e.target.value,
+              use: e.target.value.trim() === '' && optionId !== null ? 'option' : 'words',
+            })
+          }
+          // Holding the answer: the primary border, same width, like a chosen option.
+          className={`min-h-24 resize-y ${usesWords && words.trim() ? 'border-primary' : ''}`}
+        />
       </div>
-      <Refused show={refused} />
-    </div>
+    </Frame>
   )
 }
 
@@ -236,23 +316,19 @@ export function FailureDecision({ agent }: { agent: AgentModel }) {
   const attempt = agent.attempts[agent.attempts.length - 1]
   const steps = agent.steps.filter((step) => step.seq >= attempt.startSeq).length
   return (
-    <div className="flex flex-col gap-2.5">
-      <h3 className="text-[15px] font-bold">Retry this agent?</h3>
-      <div className="grid grid-cols-[5rem_minmax(0,1fr)] gap-x-2.5 gap-y-1">
+    <Frame band="failed" who={agent.label} title="Retry this agent?" footer={<RetryButton agentId={agent.id} />}>
+      <Fields>
         <Row label="Status">{agent.status?.statusLine}</Row>
         {agent.status?.error && (
           <Row label="Error">
-            <span className="font-mono" style={{ color: 'var(--tone-danger)' }}>
-              {agent.status.error.message}
-            </span>
+            <span className="text-failed font-mono text-code">{agent.status.error.message}</span>
           </Row>
         )}
-      </div>
-      <p className="text-muted-foreground">
+      </Fields>
+      <p>
         The {steps} {steps === 1 ? 'step' : 'steps'} of attempt {attempt.n} {steps === 1 ? 'stays' : 'stay'} in its trace. Retry starts
         attempt {attempt.n + 1}.
       </p>
-      <RetryButton agentId={agent.id} />
-    </div>
+    </Frame>
   )
 }

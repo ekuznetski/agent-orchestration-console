@@ -3,8 +3,15 @@ import type { AgentTag } from '@/store/console.reducer'
 /** Colour means state only: neutral grey, active blue, one yellow, one red, one green. */
 export type Tone = 'neutral' | 'active' | 'attention' | 'danger' | 'success'
 
-export const toneColor = (tone: Tone) => `var(--tone-${tone})`
-export const toneBg = (tone: Tone) => `var(--tone-${tone}-bg)`
+/** The left edge of the decision panel by tone: the bright accent of the state, neutral otherwise. */
+export const toneEdge = (tone: Tone) =>
+  tone === 'attention'
+    ? 'border-l-needs-bar'
+    : tone === 'danger'
+      ? 'border-l-failed'
+      : tone === 'success'
+        ? 'border-l-done'
+        : 'border-l-input'
 
 export const TAGS: Record<AgentTag, { label: string; tone: Tone }> = {
   queued: { label: 'Queued', tone: 'neutral' },
@@ -28,10 +35,19 @@ const ACTS: Record<string, string> = { searched: 'Searched', read: 'Read', decid
 
 export const actLabel = (act: string): string => ACTS[act] ?? act
 
-const ACTIONS: Record<
-  string,
-  { title: string; editedTitle: string; approve: string; edit: string; editTitle: string; editNote: string; bodyLabel: string }
-> = {
+type ActionLabels = {
+  title: string
+  editedTitle: string
+  approve: string
+  edit: string
+  editTitle: string
+  editNote: string
+  bodyLabel: string
+  /** The label of the gate's `target` row. */
+  targetLabel: string
+}
+
+const ACTIONS: Record<string, ActionLabels> = {
   send_email: {
     title: 'Send this email?',
     editedTitle: 'Send the edited email?',
@@ -40,18 +56,22 @@ const ACTIONS: Record<
     editTitle: 'Edit the email',
     editNote: 'Nothing is sent yet. You approve the edited email next.',
     bodyLabel: 'Message',
+    targetLabel: 'To',
   },
 }
 
-export const actionLabels = (action: string) =>
+/** Words for a confirmation's action. An action without its own words is named verbatim, so the user always
+ * sees what they approve. */
+export const actionLabels = (action: string): ActionLabels =>
   ACTIONS[action] ?? {
-    title: 'Approve this action?',
-    editedTitle: 'Approve the edited action?',
+    title: `Approve ${action}?`,
+    editedTitle: `Approve the edited ${action}?`,
     approve: 'Approve',
     edit: 'Edit',
-    editTitle: 'Edit the draft',
+    editTitle: `Edit ${action}`,
     editNote: 'Nothing happens yet. You approve the edited version next.',
     bodyLabel: 'Body',
+    targetLabel: 'Target',
   }
 
 const RESULT_KINDS: Record<string, string> = {

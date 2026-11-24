@@ -1,10 +1,12 @@
 import { useState } from 'react'
-import { TAGS, toneBg, toneColor } from '@/config/agentTags'
+import { ChevronRight } from 'lucide-react'
+import { TAGS } from '@/config/agentTags'
 import { useConsoleStore } from '@/store/console.store'
 import { useAgent, useIsShown } from '@/store/hooks'
 import { statusLineOf, waitingQueue } from '@/store/selectors'
 import { useViewStore } from '@/store/view.store'
 import { AgentTrace } from './AgentTrace'
+import { StatusBadge } from './StatusBadge'
 
 /** One agent: label, state badge, one status line, its trace on demand. Clicking the card opens its decision. */
 export function AgentCard({ id }: { id: string }) {
@@ -18,10 +20,14 @@ export function AgentCard({ id }: { id: string }) {
   const openInPanel = () => (inQueue ? select(id) : openRecord(id))
   const [open, setOpen] = useState(false)
 
-  const tag = TAGS[agent.tag]
-  const color = toneColor(tag.tone)
+  const tone = TAGS[agent.tag].tone
+  // Colour means state only: amber needs you, red failed; every other card has the neutral edge.
+  const edge = tone === 'attention' ? 'border-needs-bar' : tone === 'danger' ? 'border-failed' : 'border-border'
+  const link = tone === 'attention' ? 'bg-needs-bar' : tone === 'danger' ? 'bg-failed' : 'bg-input'
   const line = statusLineOf(agent) ?? ''
   const foot = inQueue ? (agent.tag === 'failed' ? 'Retry in the panel' : 'Decision in the panel') : 'Details in the panel'
+  const linkButton =
+    'text-foreground decoration-input hover:decoration-foreground inline-flex h-[19px] items-center gap-0.5 text-label underline underline-offset-[3px]'
 
   return (
     <div
@@ -29,27 +35,28 @@ export function AgentCard({ id }: { id: string }) {
       // The whole card is a mouse shortcut; the footer button is the keyboard and screen reader path,
       // so no interactive element is nested inside another.
       onClick={openInPanel}
-      className="bg-card relative flex cursor-pointer flex-col gap-1 rounded-md border border-t-[3px] px-3 py-2.5"
-      style={{ borderTopColor: color, boxShadow: shown ? `0 0 0 2px ${color}` : undefined }}
+      // One even 2px border for every state; selection only raises the card (shadow), so neither changes its size.
+      className={`relative flex cursor-pointer flex-col rounded-lg border-2 ${edge} bg-card ${shown ? 'shadow-raised' : ''}`}
     >
-      {shown && <span aria-hidden="true" className="absolute top-1/2 -right-3.5 w-3.5 border-t-2" style={{ borderColor: color }} />}
-      <div className="grid grid-cols-[minmax(0,1fr)_8rem] items-center gap-2">
-        <b className="truncate">{agent.label}</b>
-        <span
-          className="justify-self-end rounded-full px-2 py-px text-[11px] whitespace-nowrap"
-          style={{ background: toneBg(tag.tone), color }}
-          data-testid="agent-badge"
+      {shown && <span aria-hidden="true" className={`absolute top-1/2 -right-6.5 h-[3px] w-6 -translate-y-1/2 ${link}`} />}
+      <div className="grid grid-cols-[minmax(0,1fr)_8rem] items-start gap-x-3 gap-y-0.5 px-4 pt-3 pb-2">
+        <b className="truncate text-title font-semibold">{agent.label}</b>
+        <div className="row-span-2 justify-self-end">
+          <StatusBadge tag={agent.tag} testId="agent-badge" />
+        </div>
+        <div
+          className={`h-[19px] truncate text-label ${agent.tag === 'failed' ? 'text-failed' : 'text-muted-foreground'}`}
+          title={line}
+          data-testid="agent-status-line"
         >
-          {tag.label}
-        </span>
+          {line}
+        </div>
       </div>
-      <div className="text-muted-foreground h-5 truncate" title={line} data-testid="agent-status-line">
-        {line}
-      </div>
-      <div className="flex h-5 justify-between text-xs" style={{ color: 'var(--tone-active)' }}>
+      {open && <AgentTrace agent={agent} />}
+      <div className="flex items-center justify-between px-4 pb-3">
         <button
           type="button"
-          className="hover:underline"
+          className={linkButton}
           onClick={(e) => {
             e.stopPropagation()
             setOpen(!open)
@@ -60,7 +67,7 @@ export function AgentCard({ id }: { id: string }) {
         </button>
         <button
           type="button"
-          className="hover:underline"
+          className={linkButton}
           aria-pressed={shown}
           onClick={(e) => {
             e.stopPropagation()
@@ -68,9 +75,9 @@ export function AgentCard({ id }: { id: string }) {
           }}
         >
           {foot}
+          <ChevronRight aria-hidden="true" className="size-3.5" />
         </button>
       </div>
-      {open && <AgentTrace agent={agent} />}
     </div>
   )
 }
@@ -78,12 +85,18 @@ export function AgentCard({ id }: { id: string }) {
 export function AgentList() {
   const order = useConsoleStore((state) => state.plan?.order)
   const cancelled = useConsoleStore((state) => state.status === 'cancelled')
-  if (!order) return <p className="text-muted-foreground">{cancelled ? 'The run was cancelled before the plan arrived.' : 'Planning...'}</p>
   return (
-    <div className="grid grid-cols-[minmax(0,1fr)] items-start gap-2.5">
-      {order.map((id) => (
-        <AgentCard key={id} id={id} />
-      ))}
+    <div className="flex flex-col">
+      <h2 className="text-muted-foreground mb-2 text-xs font-semibold">Agents - plan order</h2>
+      {order ? (
+        <div className="grid grid-cols-[minmax(0,1fr)] items-start gap-3">
+          {order.map((id) => (
+            <AgentCard key={id} id={id} />
+          ))}
+        </div>
+      ) : (
+        <p className="text-muted-foreground">{cancelled ? 'The run was cancelled before the plan arrived.' : 'Planning...'}</p>
+      )}
     </div>
   )
 }

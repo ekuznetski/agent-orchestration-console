@@ -1,7 +1,7 @@
 import { AgentList } from '@/components/console/AgentCard'
 import { DecisionPanel } from '@/components/console/DecisionPanel'
 import { ResultBlock } from '@/components/console/ResultBlock'
-import { StartCard, TopBar } from '@/components/console/TopBar'
+import { Brand, StartCard, TopBar } from '@/components/console/TopBar'
 import { useConsoleStore } from '@/store/console.store'
 import { useViewStore } from '@/store/view.store'
 
@@ -14,14 +14,18 @@ export default function App() {
   if (!hasPlan && runs <= 1) return <StartCard />
 
   return (
-    <div className="flex h-dvh flex-col">
+    <div className="mx-auto max-w-[1200px] px-6 pt-6 pb-12">
+      <Brand />
       <TopBar />
-      <div className="grid min-h-0 flex-1 grid-cols-[2fr_3fr]">
-        <main className="flex flex-col gap-2.5 overflow-y-auto border-r p-3.5">
+      <div className="mt-6 grid grid-cols-[minmax(0,2fr)_minmax(0,3fr)] items-start gap-6">
+        <main className="flex flex-col gap-6">
           <ResultBlock />
           <AgentList key={runKey ?? 'none'} />
         </main>
-        <DecisionPanel />
+        {/* Sticky beside the agents; a panel taller than the window scrolls on its own. */}
+        <div className="sticky top-4 max-h-[calc(100dvh-2rem)] overflow-y-auto rounded-lg">
+          <DecisionPanel />
+        </div>
       </div>
     </div>
   )

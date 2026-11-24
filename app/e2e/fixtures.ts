@@ -20,6 +20,8 @@ export const panel = (page: Page) => page.getByRole('complementary', { name: /^(
  * project's jitter through the UI, and starts the run. */
 export async function startRun(page: Page, jitter: boolean, speed: '0.25x' | '4x' = '4x') {
   await page.goto('/')
+  // Web fonts swap in after load; measure layout only once they are in.
+  await page.evaluate(() => document.fonts.ready)
   await page.getByRole('button', { name: speed }).click()
   if (jitter) await page.getByRole('checkbox', { name: 'Jitter' }).click()
   await page.getByRole('button', { name: 'Start run' }).click()
@@ -47,7 +49,7 @@ export async function retryResearch(page: Page) {
 
 type Watch = { cards: string[]; versions: number[]; violations: string[] }
 
-/** Watches every frame from now on. The agent cards may move only in a frame where the result block appears
+/** Watches every frame from now on, in page coordinates (the page scrolls). The agent cards may move only in a frame where the result block appears
  * or is replaced by a newer result (its `data-version` changes); any other card move, and a result block that
  * goes away once shown, is a violation. */
 export async function watchLayout(page: Page) {
@@ -60,7 +62,7 @@ export async function watchLayout(page: Page) {
       const block = document.querySelector<HTMLElement>('[aria-label="Result"]')
       const now = block ? Number(block.dataset.version) : 0
       const cards = [...document.querySelectorAll<HTMLElement>('[data-testid^="agent-card-"]')]
-      const at = cards.map((el) => `${el.dataset.testid}@${el.getBoundingClientRect().top}`).join(' ')
+      const at = cards.map((el) => `${el.dataset.testid}@${el.getBoundingClientRect().top + window.scrollY}`).join(' ')
       watch.cards = cards.map((el) => el.dataset.testid!)
       if (version === null) {
         // first frame: the starting point
